@@ -140,6 +140,13 @@ stamp-versions:
 test:
 	go test ./...
 
+# Packaging integration tests — pack/install the npm and pip wrappers
+# locally and confirm they can find and exec the bundled Go binary.
+# Requires a host-platform binary in dist/ (build with `make build`).
+.PHONY: test-packaging
+test-packaging:
+	bash test/run-all.sh
+
 .PHONY: clean
 clean:
 	rm -rf $(BUILD_DIR)

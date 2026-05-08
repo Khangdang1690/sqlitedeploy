@@ -14,3 +14,11 @@
 
 # Local Claude Code settings
 /.claude/settings.local.json
+
+# Test scratch space and tooling venvs (recreated by test/run-all.sh)
+/.venv-tools/
+/test/.scratch/
+
+# Python bytecode caches (hatch_build.py picks one up during wheel build)
+__pycache__/
+*.pyc
