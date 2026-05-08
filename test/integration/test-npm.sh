@@ -74,6 +74,17 @@ mkdir -p "$APP"
     "$PLATFORM_TGZ" "$MAIN_TGZ" >/dev/null)
 
 echo "[5/6] exec sqlitedeploy --version"
+# node_modules/.bin/sqlitedeploy must exist — if both the main package and a
+# platform package declare `bin: { sqlitedeploy: ... }`, npm refuses to
+# create the symlink and `npx`/`PATH` falls through to whatever else is
+# installed. This caught the rc.2 regression.
+if [ ! -e "$APP/node_modules/.bin/sqlitedeploy" ] && \
+   [ ! -e "$APP/node_modules/.bin/sqlitedeploy.cmd" ]; then
+    echo "    node_modules/.bin/sqlitedeploy missing — bin conflict between" >&2
+    echo "    main and platform packages? Check for duplicate \"bin\" fields." >&2
+    ls -la "$APP/node_modules/.bin/" >&2
+    exit 1
+fi
 ACTUAL="$(cd "$APP" && npx --no-install sqlitedeploy --version)"
 EXPECTED="sqlitedeploy version $TEST_VERSION"
 if [ "$ACTUAL" != "$EXPECTED" ]; then

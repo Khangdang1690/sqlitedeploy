@@ -14,9 +14,6 @@
   "cpu": [
     "x64"
   ],
-  "bin": {
-    "sqlitedeploy": "bin/sqlitedeploy.exe"
-  },
   "files": [
     "bin/sqlitedeploy.exe"
   ]
