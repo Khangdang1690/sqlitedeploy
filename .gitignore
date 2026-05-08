@@ -8,10 +8,6 @@
 # Local credentials and runtime config
 /.sqlitedeploy/
 
-# Embedded Litestream binaries (downloaded via `make fetch-litestream`)
-/internal/litestream/bin/*
-!/internal/litestream/bin/README.md
-
 # Local Claude Code settings
 /.claude/settings.local.json
 
@@ -22,3 +18,8 @@
 # Python bytecode caches (hatch_build.py picks one up during wheel build)
 __pycache__/
 *.pyc
+
+# Maven build outputs (target/) and per-platform binaries copied in by
+# `make package-maven` before `mvn package` runs.
+/packaging/maven/**/target/
+/packaging/maven/platforms/*/src/main/resources/META-INF/native/

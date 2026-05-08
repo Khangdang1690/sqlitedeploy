@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.khangdang1690</groupId>
+        <artifactId>sqlitedeploy-parent</artifactId>
+        <version>0.0.0</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>sqlitedeploy-cli-windows-aarch64</artifactId>
+    <packaging>jar</packaging>
+
+    <name>sqlitedeploy CLI binary (windows-aarch64)</name>
+    <description>Native sqlitedeploy CLI binary for Windows aarch64. Pair with io.github.khangdang1690:sqlitedeploy-cli to provide the platform-specific executable.</description>
+    <url>https://github.com/Khangdang1690/sqlitedeploy</url>
+</project>

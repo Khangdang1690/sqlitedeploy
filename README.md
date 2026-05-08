@@ -60,7 +60,35 @@ pip install sqlitedeploy
 sqlitedeploy --help
 ```
 
-**Standalone binary** (any language, including Go / Java / Spring Boot):
+**Go** (1.22+):
+
+```bash
+go install github.com/Khangdang1690/sqlitedeploy/cmd/sqlitedeploy@latest
+sqlitedeploy --help
+```
+
+The build is self-contained: the matching `litestream` is committed into the
+module under `internal/litestream/bin/` and embedded at compile time, so a
+`go install` produces the same ~40 MB binary the npm and pip packages ship.
+
+**Java / Spring Boot** — via Maven Central:
+
+```xml
+<dependency>
+  <groupId>io.github.khangdang1690</groupId>
+  <artifactId>sqlitedeploy-cli</artifactId>
+  <version>${sqlitedeploy.version}</version>
+</dependency>
+```
+
+Maven resolves the right platform-classifier JAR (e.g. `linux-x86_64`) at
+install time, mirroring npm's per-platform packages. Run via
+`mvn exec:java -Dexec.mainClass=io.github.khangdang1690.sqlitedeploy.Main`,
+or use the launcher class directly from your build. Some pipelines prefer
+[`os-maven-plugin`](https://github.com/trustin/os-maven-plugin) to detect
+the classifier automatically.
+
+**Standalone binary** (other platforms, no package manager):
 download from <https://github.com/Khangdang1690/sqlitedeploy/releases> and
 put it on your `PATH`.
 

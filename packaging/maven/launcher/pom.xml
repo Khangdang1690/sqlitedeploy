@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.khangdang1690</groupId>
+        <artifactId>sqlitedeploy-parent</artifactId>
+        <version>0.0.0</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>sqlitedeploy-cli</artifactId>
+    <packaging>jar</packaging>
+
+    <name>sqlitedeploy</name>
+    <description>Launcher for the sqlitedeploy CLI. Pair with a platform-classifier artifact (sqlitedeploy-cli-linux-x86_64, etc.) to obtain the native binary for your OS/arch.</description>
+    <url>https://github.com/Khangdang1690/sqlitedeploy</url>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>io.github.khangdang1690.sqlitedeploy.Main</mainClass>
+                        </manifest>
+                        <manifestEntries>
+                            <Implementation-Version>${project.version}</Implementation-Version>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

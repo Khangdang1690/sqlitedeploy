@@ -38,5 +38,7 @@ fi
 
 bash test/integration/test-npm.sh
 bash test/integration/test-pip.sh
+bash test/integration/test-go.sh
+bash test/integration/test-maven.sh
 
 echo "--- all packaging tests passed"

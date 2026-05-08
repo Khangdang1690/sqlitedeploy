@@ -8,6 +8,8 @@
 #   make package-npm        copy release binaries into packaging/npm/platforms/
 #   make package-pip        build platform-tagged wheels under packaging/pip/dist/
 #                           (requires VERSION; needs `hatch` on PATH)
+#   make package-maven      copy release binaries into packaging/maven/platforms/
+#                           and run `mvn package` (requires VERSION; needs `mvn`)
 #   make stamp-versions     rewrite version fields in all packaging manifests
 #                           (requires VERSION; needs node + python3)
 #
@@ -28,6 +30,17 @@ PIP_PLATFORMS := \
 	darwin:arm64:macosx_11_0_arm64 \
 	windows:amd64:win_amd64 \
 	windows:arm64:win_arm64
+
+# Maven classifier names per Go OS/ARCH (used by package-maven). Each entry
+# corresponds to one packaging/maven/platforms/<plat>/ module.
+# (go-os : go-arch : maven-classifier)
+MAVEN_PLATFORMS := \
+	linux:amd64:linux-x86_64 \
+	linux:arm64:linux-aarch64 \
+	darwin:amd64:darwin-x86_64 \
+	darwin:arm64:darwin-aarch64 \
+	windows:amd64:windows-x86_64 \
+	windows:arm64:windows-aarch64
 
 # (go-os : go-arch : litestream-arch : archive-ext)
 #
@@ -128,12 +141,43 @@ package-pip:
 	done
 	@ls -lh packaging/pip/dist
 
+# prepare-maven copies the cross-compiled binaries into each platform
+# module's resources dir, but stops short of running maven. The release
+# workflow uses this so it can call `mvn deploy` directly without rebuilding
+# via `mvn package` first.
+.PHONY: prepare-maven
+prepare-maven:
+	@if [ "$(VERSION)" = "dev" ]; then echo "VERSION=x.y.z required"; exit 1; fi
+	@rm -rf packaging/maven/launcher/target packaging/maven/platforms/*/target
+	@for spec in $(MAVEN_PLATFORMS); do \
+		go_os=$$(echo $$spec | cut -d: -f1); \
+		go_arch=$$(echo $$spec | cut -d: -f2); \
+		mvn_plat=$$(echo $$spec | cut -d: -f3); \
+		ext=""; [ "$$go_os" = "windows" ] && ext=".exe"; \
+		bin="$(BUILD_DIR)/$(BIN_NAME)-$$go_os-$$go_arch$$ext"; \
+		[ -f "$$bin" ] || { echo "missing $$bin — run \`make release\` first"; exit 1; }; \
+		dst_dir="packaging/maven/platforms/$$mvn_plat/src/main/resources/META-INF/native"; \
+		rm -rf "$$dst_dir"; \
+		mkdir -p "$$dst_dir"; \
+		cp "$$bin" "$$dst_dir/$(BIN_NAME)$$ext"; \
+		chmod +x "$$dst_dir/$(BIN_NAME)$$ext" || true; \
+		echo "→ $$dst_dir/$(BIN_NAME)$$ext"; \
+	done
+
+.PHONY: package-maven
+package-maven: prepare-maven
+	@command -v mvn >/dev/null || { echo "mvn not found — install from https://maven.apache.org/install.html"; exit 1; }
+	@echo "→ mvn -B package (in packaging/maven)"
+	cd packaging/maven && mvn -B package
+	@ls -lh packaging/maven/launcher/target/*.jar packaging/maven/platforms/*/target/*.jar
+
 .PHONY: stamp-versions
 stamp-versions:
 	@if [ "$(VERSION)" = "dev" ]; then echo "VERSION=x.y.z required"; exit 1; fi
 	@command -v node >/dev/null || { echo "node not found"; exit 1; }
 	@command -v python3 >/dev/null || command -v python >/dev/null || { echo "python not found"; exit 1; }
 	node scripts/stamp-versions.js $(VERSION)
+	node scripts/stamp-versions-maven.js $(VERSION)
 	@(command -v python3 >/dev/null && python3 scripts/stamp-versions.py $(VERSION)) || python scripts/stamp-versions.py $(VERSION)
 
 .PHONY: test

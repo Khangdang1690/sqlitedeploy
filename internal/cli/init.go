@@ -118,6 +118,7 @@ and --account-id to skip the Cloudflare API entirely.`,
 			fmt.Printf("     Python: sqlite3.connect(%q)\n", absDB)
 			fmt.Printf("     Node:   new Database(%q)\n", absDB)
 			fmt.Printf("     Go:     sql.Open(\"sqlite3\", %q)\n", absDB)
+			fmt.Printf("     Java:   DriverManager.getConnection(\"jdbc:sqlite:%s\")\n", filepath.ToSlash(absDB))
 			fmt.Println()
 			return nil
 		},
