@@ -24,8 +24,8 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Khangdang1690/elite"
-Issues = "https://github.com/Khangdang1690/elite/issues"
+Homepage = "https://github.com/Khangdang1690/sqlitedeploy"
+Issues = "https://github.com/Khangdang1690/sqlitedeploy/issues"
 
 [project.scripts]
 sqlitedeploy = "sqlitedeploy._resolve:main"

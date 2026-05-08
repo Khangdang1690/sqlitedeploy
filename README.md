@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/sqlitedeploy.svg?label=npm)](https://www.npmjs.com/package/sqlitedeploy)
 [![PyPI](https://img.shields.io/pypi/v/sqlitedeploy.svg?label=pypi)](https://pypi.org/project/sqlitedeploy/)
-[![GitHub release](https://img.shields.io/github/v/release/Khangdang1690/elite?label=binary)](https://github.com/Khangdang1690/elite/releases)
+[![GitHub release](https://img.shields.io/github/v/release/Khangdang1690/sqlitedeploy?label=binary)](https://github.com/Khangdang1690/sqlitedeploy/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 A free, distributed SQLite database in one terminal command. Your durable
@@ -61,7 +61,7 @@ sqlitedeploy --help
 ```
 
 **Standalone binary** (any language, including Go / Java / Spring Boot):
-download from <https://github.com/Khangdang1690/elite/releases> and
+download from <https://github.com/Khangdang1690/sqlitedeploy/releases> and
 put it on your `PATH`.
 
 **From source** (requires Go 1.22+).
@@ -274,7 +274,7 @@ on a timer to stay current.
 ## Contributing
 
 Bug reports, feature requests, and pull requests welcome at
-<https://github.com/Khangdang1690/elite/issues>. The packaging integration
+<https://github.com/Khangdang1690/sqlitedeploy/issues>. The packaging integration
 tests live in [`test/`](test/) — `bash test/run-all.sh` to run them locally.
 
 ## License
