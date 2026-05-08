@@ -17,7 +17,7 @@ npm i -g sqlitedeploy
 ```
 
 `npm` picks the matching binary from one of the platform packages
-(`@sqlitedeploy/linux-x64`, `@sqlitedeploy/darwin-arm64`, …) automatically
+(`@weirdvl/linux-x64`, `@weirdvl/darwin-arm64`, …) automatically
 via `optionalDependencies`. No `postinstall`, no network calls beyond the
 registry.
 

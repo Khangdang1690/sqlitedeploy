@@ -1,5 +1,5 @@
 {
-  "name": "@sqlitedeploy/darwin-x64",
+  "name": "@weirdvl/darwin-x64",
   "version": "0.0.0",
   "description": "sqlitedeploy CLI binary for darwin-x64. Installed automatically by the `sqlitedeploy` package.",
   "license": "Apache-2.0",

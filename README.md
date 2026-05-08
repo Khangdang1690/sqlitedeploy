@@ -47,7 +47,7 @@ npm i -g sqlitedeploy
 npm i sqlitedeploy && npx sqlitedeploy --help
 ```
 
-`npm` resolves the matching `@sqlitedeploy/<platform>` package via
+`npm` resolves the matching `@weirdvl/<platform>` package via
 `optionalDependencies`. No postinstall scripts, no network calls beyond the
 registry.
 

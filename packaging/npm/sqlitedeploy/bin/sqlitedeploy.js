@@ -42,14 +42,14 @@ function resolveBinary() {
   // Resolve the platform package's package.json (always JSON-loadable),
   // then join to the binary. Resolving the binary directly fails because
   // Node's resolver looks for JS modules, not arbitrary files.
-  const pkgManifest = `@sqlitedeploy/${key}/package.json`;
+  const pkgManifest = `@weirdvl/${key}/package.json`;
 
   let manifestPath;
   try {
     manifestPath = require.resolve(pkgManifest);
   } catch (err) {
     fail(
-      `platform package @sqlitedeploy/${key} not installed. ` +
+      `platform package @weirdvl/${key} not installed. ` +
         `This usually means npm skipped optionalDependencies — try ` +
         `\`npm install --include=optional sqlitedeploy\`, or download a ` +
         `binary from https://github.com/Khangdang1690/sqlitedeploy/releases`

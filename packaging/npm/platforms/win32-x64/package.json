@@ -1,5 +1,5 @@
 {
-  "name": "@sqlitedeploy/win32-x64",
+  "name": "@weirdvl/win32-x64",
   "version": "0.0.0",
   "description": "sqlitedeploy CLI binary for win32-x64. Installed automatically by the `sqlitedeploy` package.",
   "license": "Apache-2.0",

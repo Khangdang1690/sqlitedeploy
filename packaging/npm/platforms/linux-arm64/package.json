@@ -1,5 +1,5 @@
 {
-  "name": "@sqlitedeploy/linux-arm64",
+  "name": "@weirdvl/linux-arm64",
   "version": "0.0.0",
   "description": "sqlitedeploy CLI binary for linux-arm64. Installed automatically by the `sqlitedeploy` package.",
   "license": "Apache-2.0",

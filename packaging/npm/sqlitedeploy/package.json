@@ -33,11 +33,11 @@
     "node": ">=16"
   },
   "optionalDependencies": {
-    "@sqlitedeploy/linux-x64": "0.0.0",
-    "@sqlitedeploy/linux-arm64": "0.0.0",
-    "@sqlitedeploy/darwin-x64": "0.0.0",
-    "@sqlitedeploy/darwin-arm64": "0.0.0",
-    "@sqlitedeploy/win32-x64": "0.0.0",
-    "@sqlitedeploy/win32-arm64": "0.0.0"
+    "@weirdvl/linux-x64": "0.0.0",
+    "@weirdvl/linux-arm64": "0.0.0",
+    "@weirdvl/darwin-x64": "0.0.0",
+    "@weirdvl/darwin-arm64": "0.0.0",
+    "@weirdvl/win32-x64": "0.0.0",
+    "@weirdvl/win32-arm64": "0.0.0"
   }
 }
