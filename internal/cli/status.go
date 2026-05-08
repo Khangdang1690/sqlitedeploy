@@ -12,11 +12,11 @@ import (
 )
 
 // NewStatusCmd builds the `status` subcommand: dumps the configured paths,
-// local DB size, and litestream's view of available snapshots.
+// local DB size, and litestream's view of replicated LTX files.
 func NewStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show config, local DB stats, and snapshot list from object storage",
+		Short: "Show config, local DB stats, and replicated LTX files from object storage",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dir, err := projectDir(cmd)
 			if err != nil {
@@ -45,11 +45,15 @@ func NewStatusCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			out, err := runner.Snapshots(context.Background(), absDB(dir, cfg.DBPath))
+			out, err := runner.LTXFiles(context.Background(), absDB(dir, cfg.DBPath))
 			fmt.Println()
-			fmt.Println("Snapshots:")
+			fmt.Println("Replicated LTX files:")
 			if err != nil {
 				fmt.Printf("  (failed to list: %v)\n", err)
+				fmt.Println("  Note: this usually means replication hasn't started yet —")
+				fmt.Println("        run `sqlitedeploy run` to begin replicating to your bucket.")
+			} else if len(out) == 0 {
+				fmt.Println("  (none yet — nothing has been replicated to your bucket)")
 			} else {
 				fmt.Print(string(out))
 			}

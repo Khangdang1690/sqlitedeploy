@@ -59,9 +59,11 @@ func (r *Runner) Restore(ctx context.Context, dbPath, replicaURL string, ifNotEx
 	return nil
 }
 
-// Snapshots lists available snapshots for the configured database.
-func (r *Runner) Snapshots(ctx context.Context, dbPath string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, r.binPath, "snapshots", "-config", r.configPath, dbPath)
+// LTXFiles lists the LTX (Litestream Transaction) files replicated for the
+// configured database. Litestream 0.5+ uses LTX as the unit of replication;
+// the older `snapshots` subcommand was removed.
+func (r *Runner) LTXFiles(ctx context.Context, dbPath string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, r.binPath, "ltx", "-config", r.configPath, dbPath)
 	cmd.Stderr = os.Stderr
 	return cmd.Output()
 }
