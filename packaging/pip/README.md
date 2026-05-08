@@ -44,12 +44,12 @@ linux x86_64, linux aarch64, macOS x86_64, macOS arm64, Windows x86_64,
 Windows arm64.
 
 For unsupported platforms (e.g. linux-riscv64, FreeBSD) download a binary
-from <https://github.com/Khangdang1690/sqlitedeploy/releases>.
+from <https://github.com/Khangdang1690/elite/releases>.
 
 ## Documentation
 
 Full CLI reference, architecture, and limitations:
-<https://github.com/Khangdang1690/sqlitedeploy>.
+<https://github.com/Khangdang1690/elite>.
 
 ## License
 

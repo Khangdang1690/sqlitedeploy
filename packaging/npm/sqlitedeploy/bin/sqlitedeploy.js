@@ -34,7 +34,7 @@ function resolveBinary() {
       `unsupported platform ${key}. ` +
         `Supported: ${[...SUPPORTED].join(', ')}. ` +
         `Download a binary manually from ` +
-        `https://github.com/Khangdang1690/sqlitedeploy/releases`
+        `https://github.com/Khangdang1690/elite/releases`
     );
   }
 
@@ -52,7 +52,7 @@ function resolveBinary() {
       `platform package @weirdvl/${key} not installed. ` +
         `This usually means npm skipped optionalDependencies — try ` +
         `\`npm install --include=optional sqlitedeploy\`, or download a ` +
-        `binary from https://github.com/Khangdang1690/sqlitedeploy/releases`
+        `binary from https://github.com/Khangdang1690/elite/releases`
     );
   }
   return path.join(path.dirname(manifestPath), 'bin', exeName);

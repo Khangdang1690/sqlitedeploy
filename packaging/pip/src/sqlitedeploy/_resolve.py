@@ -28,7 +28,7 @@ def main() -> None:
             f"sqlitedeploy: binary not found at {binary}.\n"
             "This wheel was built without a bundled binary, which is a "
             "packaging bug. Reinstall, or download a binary from "
-            "https://github.com/Khangdang1690/sqlitedeploy/releases\n"
+            "https://github.com/Khangdang1690/elite/releases\n"
         )
         sys.exit(1)
 

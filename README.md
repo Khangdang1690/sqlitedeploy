@@ -1,5 +1,10 @@
 # sqlitedeploy
 
+[![npm](https://img.shields.io/npm/v/sqlitedeploy.svg?label=npm)](https://www.npmjs.com/package/sqlitedeploy)
+[![PyPI](https://img.shields.io/pypi/v/sqlitedeploy.svg?label=pypi)](https://pypi.org/project/sqlitedeploy/)
+[![GitHub release](https://img.shields.io/github/v/release/Khangdang1690/elite?label=binary)](https://github.com/Khangdang1690/elite/releases)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
 A free, distributed SQLite database in one terminal command. Your durable
 master lives in your own object-storage bucket (Cloudflare R2 / Backblaze B2 /
 any S3-compatible service); your working copy lives next to your application.
@@ -35,9 +40,10 @@ Any language with a SQLite driver connects to it natively — no SDK required.
 
 ### 1. Install
 
-Pick whichever fits your stack — all three install the same prebuilt binary
-(~40 MB, with the matching Litestream embedded). Each language's package
-just locates the right binary for your OS/arch and execs it.
+Pick whichever fits your stack — every option resolves to the same prebuilt
+binary (~40 MB, with the matching Litestream embedded). The npm and pip
+packages are thin shims that locate the right binary for your OS/arch and
+exec it; no postinstall scripts, no network calls beyond the registry.
 
 **Node.js / TypeScript / Next.js**:
 
@@ -47,10 +53,6 @@ npm i -g sqlitedeploy
 npm i sqlitedeploy && npx sqlitedeploy --help
 ```
 
-`npm` resolves the matching `@weirdvl/<platform>` package via
-`optionalDependencies`. No postinstall scripts, no network calls beyond the
-registry.
-
 **Python / FastAPI**:
 
 ```bash
@@ -58,11 +60,8 @@ pip install sqlitedeploy
 sqlitedeploy --help
 ```
 
-PyPI serves a platform-tagged wheel with the binary baked in — no
-compilation, no postinstall.
-
 **Standalone binary** (any language, including Go / Java / Spring Boot):
-download from <https://github.com/Khangdang1690/sqlitedeploy/releases> and
+download from <https://github.com/Khangdang1690/elite/releases> and
 put it on your `PATH`.
 
 **From source** (requires Go 1.22+).
@@ -174,13 +173,13 @@ The connection string is just the local SQLite file path — every language
 works natively:
 
 ```python
-# Python
+# Python (FastAPI, Django, anything)
 import sqlite3
 db = sqlite3.connect("data/app.db")
 ```
 
 ```js
-// Node
+// Node.js (Next.js, Express)
 const Database = require('better-sqlite3');
 const db = new Database('data/app.db');
 ```
@@ -188,6 +187,15 @@ const db = new Database('data/app.db');
 ```go
 // Go
 db, _ := sql.Open("sqlite3", "data/app.db")
+```
+
+```java
+// Java / Spring Boot — needs `org.xerial:sqlite-jdbc` on the classpath.
+// In application.yml:
+//   spring.datasource.url: jdbc:sqlite:./data/app.db
+//   spring.datasource.driver-class-name: org.sqlite.JDBC
+// Or in plain JDBC:
+Connection db = DriverManager.getConnection("jdbc:sqlite:./data/app.db");
 ```
 
 ### 6. Attach a read replica (on another machine)
@@ -212,8 +220,8 @@ local file as usual.
 | `sqlitedeploy init`        | Set up a primary node (managed for R2; manual for B2/S3 or with flags) |
 | `sqlitedeploy run`         | Run continuous WAL replication on the primary                        |
 | `sqlitedeploy attach`      | Set up a read replica node                                           |
-| `sqlitedeploy status`      | Show config, local DB size, available snapshots                      |
-| `sqlitedeploy restore`     | Pull the latest snapshot from object storage                         |
+| `sqlitedeploy status`      | Show config, local DB size, replicated LTX files in your bucket      |
+| `sqlitedeploy restore`     | Pull the latest replicated state from object storage                 |
 | `sqlitedeploy destroy`     | Remove local sqlitedeploy state (does NOT touch bucket)              |
 
 Run any command with `--help` for full flags.
@@ -225,6 +233,12 @@ Run any command with `--help` for full flags.
   same bucket they'd corrupt the master. If you need multiple writers, use
   [LiteFS](https://fly.io/docs/litefs/), [rqlite](https://rqlite.io/), or
   [Turso](https://turso.tech/) instead.
+* **Two processes — not serverless-friendly.** `sqlitedeploy run` is a
+  long-lived sidecar that has to run alongside your application. This rules
+  out fully-serverless platforms (Vercel, Cloudflare Workers, AWS Lambda,
+  Edge runtimes) where you can't keep a daemon alive. You need a real
+  long-running compute host: a VPS, container, EC2, Fly.io machine, Render
+  worker, etc.
 * **Async durability.** Writes are flushed to object storage on Litestream's
   schedule (default ~1 second). The last few seconds of writes can be lost on
   a primary crash before the WAL ships.
@@ -256,3 +270,14 @@ that config. All the heavy lifting is Litestream's.
 block (so the node can't accidentally write to the master), runs
 `litestream restore` once for the initial snapshot, then re-runs `restore`
 on a timer to stay current.
+
+## Contributing
+
+Bug reports, feature requests, and pull requests welcome at
+<https://github.com/Khangdang1690/elite/issues>. The packaging integration
+tests live in [`test/`](test/) — `bash test/run-all.sh` to run them locally.
+
+## License
+
+[Apache-2.0](LICENSE). Bundled
+[Litestream](https://github.com/benbjohnson/litestream) is also Apache-2.0.

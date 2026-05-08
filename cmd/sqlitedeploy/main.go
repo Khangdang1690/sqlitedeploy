@@ -2,7 +2,7 @@
 // durable master lives in user-owned object storage and whose working copy
 // lives on the application's disk.
 //
-// See https://github.com/Khangdang1690/sqlitedeploy for the full architecture.
+// See https://github.com/Khangdang1690/elite for the full architecture.
 package main
 
 import (

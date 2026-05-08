@@ -44,12 +44,12 @@ const db = new Database('./data/app.db');
 linux-x64, linux-arm64, darwin-x64, darwin-arm64, win32-x64, win32-arm64.
 
 For unsupported platforms (e.g. linux-riscv64, freebsd) download a binary
-from <https://github.com/Khangdang1690/sqlitedeploy/releases>.
+from <https://github.com/Khangdang1690/elite/releases>.
 
 ## Documentation
 
 Full CLI reference, architecture, and limitations:
-<https://github.com/Khangdang1690/sqlitedeploy>.
+<https://github.com/Khangdang1690/elite>.
 
 ## License
 

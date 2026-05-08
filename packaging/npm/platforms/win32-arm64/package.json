@@ -3,10 +3,10 @@
   "version": "0.0.0",
   "description": "sqlitedeploy CLI binary for win32-arm64. Installed automatically by the `sqlitedeploy` package.",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/Khangdang1690/sqlitedeploy",
+  "homepage": "https://github.com/Khangdang1690/elite",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Khangdang1690/sqlitedeploy.git"
+    "url": "git+https://github.com/Khangdang1690/elite.git"
   },
   "os": [
     "win32"
