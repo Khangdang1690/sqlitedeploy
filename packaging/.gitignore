@@ -1,0 +1,10 @@
+# Binaries are produced by `make release` and copied in by CI.
+# Never commit them — they're machine-built per-tag artifacts.
+npm/platforms/*/bin/
+pip/src/sqlitedeploy/_bin/
+
+# Build outputs
+pip/dist/
+npm/sqlitedeploy/node_modules/
+*.tgz
+*.whl

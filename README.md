@@ -35,19 +35,46 @@ Any language with a SQLite driver connects to it natively — no SDK required.
 
 ### 1. Install
 
-Pre-built binaries: download from releases and run.
+Pick whichever fits your stack — all three install the same prebuilt binary
+(~40 MB, with the matching Litestream embedded). Each language's package
+just locates the right binary for your OS/arch and execs it.
 
-From source (requires Go 1.22+). Each released binary is ~40 MB and embeds
-the matching Litestream binary for its target platform — no separate install.
+**Node.js / TypeScript / Next.js**:
 
-**macOS / Linux** (with `make`, `curl`, `tar`, `unzip`):
+```bash
+npm i -g sqlitedeploy
+# or, project-local:
+npm i sqlitedeploy && npx sqlitedeploy --help
+```
+
+`npm` resolves the matching `@sqlitedeploy/<platform>` package via
+`optionalDependencies`. No postinstall scripts, no network calls beyond the
+registry.
+
+**Python / FastAPI**:
+
+```bash
+pip install sqlitedeploy
+sqlitedeploy --help
+```
+
+PyPI serves a platform-tagged wheel with the binary baked in — no
+compilation, no postinstall.
+
+**Standalone binary** (any language, including Go / Java / Spring Boot):
+download from <https://github.com/Khangdang1690/sqlitedeploy/releases> and
+put it on your `PATH`.
+
+**From source** (requires Go 1.22+).
+
+macOS / Linux (with `make`, `curl`, `tar`, `unzip`):
 
 ```bash
 make fetch-litestream    # downloads litestream into internal/litestream/bin/
 make build               # outputs dist/sqlitedeploy (~40 MB, self-contained)
 ```
 
-**Windows** (no `make` required, uses built-in PowerShell + `tar.exe`):
+Windows (no `make` required, uses built-in PowerShell + `tar.exe`):
 
 ```powershell
 pwsh scripts\fetch-litestream.ps1

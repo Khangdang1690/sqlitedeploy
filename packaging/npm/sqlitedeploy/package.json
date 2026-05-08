@@ -1,0 +1,43 @@
+{
+  "name": "sqlitedeploy",
+  "version": "0.0.0",
+  "description": "Distributed SQLite with Litestream-backed object-storage replication. Installs the platform-native sqlitedeploy CLI binary.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/Khangdang1690/sqlitedeploy",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Khangdang1690/sqlitedeploy.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Khangdang1690/sqlitedeploy/issues"
+  },
+  "keywords": [
+    "sqlite",
+    "litestream",
+    "replication",
+    "database",
+    "r2",
+    "s3",
+    "backup",
+    "cli"
+  ],
+  "bin": {
+    "sqlitedeploy": "bin/sqlitedeploy.js"
+  },
+  "files": [
+    "bin/sqlitedeploy.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "optionalDependencies": {
+    "@sqlitedeploy/linux-x64": "0.0.0",
+    "@sqlitedeploy/linux-arm64": "0.0.0",
+    "@sqlitedeploy/darwin-x64": "0.0.0",
+    "@sqlitedeploy/darwin-arm64": "0.0.0",
+    "@sqlitedeploy/win32-x64": "0.0.0",
+    "@sqlitedeploy/win32-arm64": "0.0.0"
+  }
+}

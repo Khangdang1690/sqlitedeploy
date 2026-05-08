@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sqlitedeploy"
+version = "0.0.0"
+description = "Distributed SQLite with Litestream-backed object-storage replication. Installs the platform-native sqlitedeploy CLI binary."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.8"
+authors = [{ name = "sqlitedeploy contributors" }]
+keywords = ["sqlite", "litestream", "replication", "database", "r2", "s3", "backup", "cli"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Topic :: Database",
+    "Topic :: System :: Archiving :: Backup",
+]
+
+[project.urls]
+Homepage = "https://github.com/Khangdang1690/sqlitedeploy"
+Issues = "https://github.com/Khangdang1690/sqlitedeploy/issues"
+
+[project.scripts]
+sqlitedeploy = "sqlitedeploy._resolve:main"
+
+# Build the wheel from src/ but include the binary that hatch_build.py drops
+# into src/sqlitedeploy/_bin/ at build time.
+[tool.hatch.build.targets.wheel]
+packages = ["src/sqlitedeploy"]
+artifacts = ["src/sqlitedeploy/_bin/sqlitedeploy", "src/sqlitedeploy/_bin/sqlitedeploy.exe"]
+
+# Custom hook copies the per-platform binary in and tags the wheel.
+# Driven by env vars set by the CI matrix:
+#   SQLITEDEPLOY_BINARY  — absolute path to the Go binary to bundle
+#   SQLITEDEPLOY_PLAT    — wheel platform tag (e.g. manylinux2014_x86_64)
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "hatch_build.py"
+
+# We never ship an sdist — pip would have no way to compile the Go binary
+# from source via PEP 517, so a fake sdist would be misleading.
+[tool.hatch.build.targets.sdist]
+exclude = ["*"]

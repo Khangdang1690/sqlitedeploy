@@ -1,0 +1,133 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # needed to attach binaries to the GitHub release
+
+jobs:
+  build:
+    name: build all platform binaries
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: derive version (strip leading v)
+        id: version
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          echo "value=${version}" >> "$GITHUB_OUTPUT"
+          echo "version: ${version}"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: cross-compile binaries
+        run: make release VERSION=${{ steps.version.outputs.value }}
+
+      - name: upload binaries artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: dist/
+          retention-days: 7
+
+  publish-npm:
+    name: publish npm packages
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: dist/
+
+      - name: stamp versions in manifests
+        run: node scripts/stamp-versions.js ${{ needs.build.outputs.version }}
+
+      - name: copy binaries into platform packages
+        run: make package-npm
+
+      - name: publish per-platform packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          for dir in packaging/npm/platforms/*/; do
+            echo "publishing $dir"
+            (cd "$dir" && npm publish --access public)
+          done
+
+      - name: publish main package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd packaging/npm/sqlitedeploy
+          npm publish --access public
+
+  publish-pypi:
+    name: publish pypi wheels
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: install build tooling
+        run: pip install hatch twine
+
+      - name: download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: dist/
+
+      - name: stamp version in pip manifests
+        run: python3 scripts/stamp-versions.py ${{ needs.build.outputs.version }}
+
+      - name: build all platform wheels
+        run: make package-pip VERSION=${{ needs.build.outputs.version }}
+
+      - name: upload wheels to pypi
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: twine upload packaging/pip/dist/*.whl
+
+  github-release:
+    name: attach binaries to github release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: dist/
+
+      - name: create release with binaries
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
