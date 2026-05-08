@@ -1,0 +1,7 @@
+# Force LF on shell scripts and Python so CRLF-on-Windows checkouts don't
+# break execution on Linux/macOS CI runners.
+*.sh    text eol=lf
+*.py    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+Makefile text eol=lf
