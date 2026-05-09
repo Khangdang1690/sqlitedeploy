@@ -88,23 +88,29 @@ fetch-libsql-source:
 # Use this for Phase 1 validation; CI builds the cross-platform matrix via
 # build-sqld-target (one job per Rust target on the matching native runner).
 #
-# Recipe uses && between commands so any failure aborts the make target —
-# previously the recipe used ; and ended in a trailing echo, which made `make`
-# report success even when cargo's output couldn't be located (real CI bug).
-# We invoke cargo with --manifest-path instead of `cd`-ing so the recipe's
-# subsequent `cp` paths still resolve from the repo root.
+# IMPORTANT: cargo MUST be invoked from inside $(LIBSQL_SRC_DIR) so it picks
+# up libsql's workspace `.cargo/config.toml` — that file sets rustflags
+# `--cfg tokio_unstable` which the libsql-wal crate requires. Cargo's config
+# discovery only walks UP from cwd, not down from --manifest-path, so running
+# from the repo root makes libsql-wal fail with E0425 on `consume_budget`.
+#
+# To keep `cp` paths from breaking after the cd, we pre-compute absolute
+# source/dest paths via $$(pwd) before cd-ing into the workspace.
+#
+# `&&` between commands ensures any failure aborts the recipe (the original
+# `;`-joined version masked cp failures behind a trailing `echo "✓"`).
 .PHONY: build-sqld
 build-sqld: fetch-libsql-source
 	@mkdir -p $(SQLD_EMBED_DIR)
 	@host_os=$$(go env GOOS); \
 	host_arch=$$(go env GOARCH); \
 	ext=""; [ "$$host_os" = "windows" ] && ext=".exe"; \
-	out="$(SQLD_EMBED_DIR)/sqld-$$host_os-$$host_arch$$ext"; \
+	out="$$(pwd)/$(SQLD_EMBED_DIR)/sqld-$$host_os-$$host_arch$$ext"; \
+	src="$$(pwd)/$(LIBSQL_SRC_DIR)/target/release/sqld$$ext"; \
 	echo "→ building sqld for host ($$host_os-$$host_arch); bottomless is a path dep, no feature flag needed" && \
-	cargo build --release \
-		--manifest-path $(LIBSQL_SRC_DIR)/Cargo.toml \
-		-p libsql-server --bin sqld && \
-	cp "$(LIBSQL_SRC_DIR)/target/release/sqld$$ext" "$$out" && \
+	cd $(LIBSQL_SRC_DIR) && \
+	cargo build --release -p libsql-server --bin sqld && \
+	cp "$$src" "$$out" && \
 	chmod +x "$$out" && \
 	test -x "$$out" && \
 	ls -lh "$$out" && \
@@ -120,13 +126,12 @@ build-sqld-target: fetch-libsql-source
 	fi
 	@mkdir -p $(SQLD_EMBED_DIR)
 	@ext=""; [ "$(GO_OS)" = "windows" ] && ext=".exe"; \
-	out="$(SQLD_EMBED_DIR)/sqld-$(GO_OS)-$(GO_ARCH)$$ext"; \
+	out="$$(pwd)/$(SQLD_EMBED_DIR)/sqld-$(GO_OS)-$(GO_ARCH)$$ext"; \
+	src="$$(pwd)/$(LIBSQL_SRC_DIR)/target/$(RUST_TARGET)/release/sqld$$ext"; \
 	echo "→ building sqld for $(GO_OS)-$(GO_ARCH) ($(RUST_TARGET))" && \
-	cargo build --release \
-		--manifest-path $(LIBSQL_SRC_DIR)/Cargo.toml \
-		-p libsql-server --bin sqld \
-		--target $(RUST_TARGET) && \
-	cp "$(LIBSQL_SRC_DIR)/target/$(RUST_TARGET)/release/sqld$$ext" "$$out" && \
+	cd $(LIBSQL_SRC_DIR) && \
+	cargo build --release -p libsql-server --bin sqld --target $(RUST_TARGET) && \
+	cp "$$src" "$$out" && \
 	chmod +x "$$out" && \
 	test -x "$$out" && \
 	ls -lh "$$out" && \
