@@ -8,10 +8,15 @@ import (
 // These names come from libsql-server's bottomless integration; the
 // `LIBSQL_BOTTOMLESS_AWS_*` keys are reused for any S3-compatible provider
 // (R2, B2, Tigris, MinIO, AWS S3) since bottomless speaks the S3 API.
+//
+// envRegion uses the AWS-SDK convention (`AWS_DEFAULT_REGION`, not
+// `AWS_REGION`). sqld v0.24.32 errors out namespace creation with
+// `LIBSQL_BOTTOMLESS_AWS_DEFAULT_REGION was not set` if the shorter name
+// is used (see issue #6).
 const (
 	envBucket          = "LIBSQL_BOTTOMLESS_BUCKET"
 	envEndpoint        = "LIBSQL_BOTTOMLESS_ENDPOINT"
-	envRegion          = "LIBSQL_BOTTOMLESS_AWS_REGION"
+	envRegion          = "LIBSQL_BOTTOMLESS_AWS_DEFAULT_REGION"
 	envAccessKeyID     = "LIBSQL_BOTTOMLESS_AWS_ACCESS_KEY_ID"
 	envSecretAccessKey = "LIBSQL_BOTTOMLESS_AWS_SECRET_ACCESS_KEY"
 	envBucketPrefix    = "LIBSQL_BOTTOMLESS_DB_NAME"
