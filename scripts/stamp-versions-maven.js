@@ -40,9 +40,13 @@ function findPoms(dir) {
 
 function stamp(file, version) {
   const before = fs.readFileSync(file, 'utf8');
+  if (!/<version>[^<]+<\/version>/.test(before)) {
+    throw new Error(`no <version> tag found in ${file}`);
+  }
   const after = before.replace(/<version>[^<]+<\/version>/, `<version>${version}</version>`);
   if (after === before) {
-    throw new Error(`no <version> tag found in ${file}`);
+    console.log(`unchanged ${path.relative(repoRoot, file)} (already ${version})`);
+    return;
   }
   fs.writeFileSync(file, after);
   console.log(`stamped ${path.relative(repoRoot, file)} -> ${version}`);

@@ -152,14 +152,23 @@ jobs:
       - name: copy binaries into platform packages
         run: make package-npm
 
+      # Idempotent across retags of the same tag: skip any version already on
+      # npm. Re-running the workflow after fixing a downstream job (e.g.
+      # publish-maven) shouldn't error because npm has already seen 0.5.1.
       - name: publish per-platform packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           for dir in packaging/npm/platforms/*/; do
-            echo "publishing $dir"
-            (cd "$dir" && npm publish --access public)
+            name=$(node -p "require('$PWD/$dir/package.json').name")
+            ver=$(node -p "require('$PWD/$dir/package.json').version")
+            if npm view "$name@$ver" version >/dev/null 2>&1; then
+              echo "skip $name@$ver (already on npm)"
+            else
+              echo "publishing $dir"
+              (cd "$dir" && npm publish --access public)
+            fi
           done
 
       - name: publish main package
@@ -167,7 +176,13 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           cd packaging/npm/sqlitedeploy
-          npm publish --access public
+          name=$(node -p "require('./package.json').name")
+          ver=$(node -p "require('./package.json').version")
+          if npm view "$name@$ver" version >/dev/null 2>&1; then
+            echo "skip $name@$ver (already on npm)"
+          else
+            npm publish --access public
+          fi
 
   publish-pypi:
     name: publish pypi wheels
@@ -196,10 +211,14 @@ jobs:
         run: make package-pip VERSION=${{ needs.build-go.outputs.version }}
 
       - name: upload wheels to pypi
+        # --skip-existing makes the upload idempotent across retags: PyPI
+        # rejects duplicate version uploads, so a retag-driven re-run of
+        # this job after fixing a downstream publish (e.g. Maven) would
+        # otherwise fail here for already-published wheels.
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
-        run: twine upload packaging/pip/dist/*.whl
+        run: twine upload --skip-existing packaging/pip/dist/*.whl
 
   publish-maven:
     name: publish maven central artifacts
