@@ -21,15 +21,14 @@ no compilation, no postinstall scripts.
 
 ```bash
 sqlitedeploy auth login    # one-time Cloudflare R2 setup
-sqlitedeploy init          # creates ./data/app.db + ./.sqlitedeploy/
-sqlitedeploy run           # foreground replication loop
+sqlitedeploy up            # provisions storage + tunnel + starts sqld
 ```
 
 Then connect from your app:
 
 ```python
 import sqlite3
-db = sqlite3.connect("data/app.db")
+db = sqlite3.connect(".sqlitedeploy/db.sqlite")
 ```
 
 You can also invoke as a module:

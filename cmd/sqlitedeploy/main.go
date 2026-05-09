@@ -32,12 +32,11 @@ a SQLite driver can still open the local file directly.`,
 	}
 	root.AddCommand(
 		cli.NewAuthCmd(),
-		cli.NewInitCmd(),
-		cli.NewRunCmd(),
+		cli.NewDevCmd(),
+		cli.NewUpCmd(),
+		cli.NewDownCmd(),
 		cli.NewAttachCmd(),
 		cli.NewStatusCmd(),
-		cli.NewRestoreCmd(),
-		cli.NewDestroyCmd(),
 	)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

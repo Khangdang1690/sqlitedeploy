@@ -9,7 +9,7 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 PRIMARY_URL = "https://your-primary-host.example.com:8080"
 
-# SQLITEDEPLOY_REPLICA_JWT is the replica token minted by `sqlitedeploy init`.
+# SQLITEDEPLOY_REPLICA_JWT is the replica token minted by `sqlitedeploy up`.
 # It's a secret — never put it in this file or commit it. Set it with:
 #
 #   wrangler secret put SQLITEDEPLOY_REPLICA_JWT < .sqlitedeploy/auth/replica.jwt

@@ -1,11 +1,18 @@
 // Package config persists sqlitedeploy's per-project configuration.
 //
-// Layout on disk:
+// Layout on disk — everything lives under <project>/.sqlitedeploy/ so a single
+// rm -rf wipes all sqlitedeploy state cleanly:
 //
-//	<project>/.sqlitedeploy/config.yml          — written by `init` / `attach`
-//	<project>/.sqlitedeploy/auth/jwt_*.pem      — Ed25519 JWT keypair (init)
-//	<project>/.sqlitedeploy/auth/replica.jwt    — long-lived replica token (init)
-//	<project>/data/app.db                       — the SQLite file managed by sqld
+//	<project>/.sqlitedeploy/config.yml             — written by `up` / `attach`
+//	<project>/.sqlitedeploy/db/                    — sqld's database directory
+//	<project>/.sqlitedeploy/db/dbs/default/data    — the actual SQLite file
+//	<project>/.sqlitedeploy/auth/jwt_*.pem         — Ed25519 JWT keypair
+//	<project>/.sqlitedeploy/auth/replica.jwt       — long-lived replica token
+//
+// Note: sqld 0.24+ treats --db-path as a parent directory, not a file. Sqld
+// itself creates the dbs/<namespace>/ subdirs on first start and manages the
+// SQLite file (plus its WAL/SHM siblings) inside. We never pre-create a file
+// at db_path — doing so causes EEXIST when sqld tries to mkdir over it.
 package config
 
 import (
@@ -29,7 +36,7 @@ const (
 )
 
 // Role distinguishes a primary node (writes + replicates) from a read replica
-// (pulls only). Persisted so `run` and `attach` can refuse to operate on the
+// (pulls only). Persisted so `up` and `attach` can refuse to operate on the
 // wrong kind of node.
 type Role string
 
@@ -91,7 +98,7 @@ const CurrentVersion = 1
 
 // Default values.
 const (
-	DefaultDBPath            = "data/app.db"
+	DefaultDBPath            = ".sqlitedeploy/db"
 	DefaultBucketPrefix      = "db"
 	DefaultHTTPListenAddr    = "127.0.0.1:8080"
 	DefaultGRPCListenAddr    = "0.0.0.0:5001"
@@ -111,7 +118,7 @@ func Load(projectDir string) (*Config, error) {
 	raw, err := os.ReadFile(p)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("no sqlitedeploy config found at %s — run `sqlitedeploy init` first", p)
+			return nil, fmt.Errorf("no sqlitedeploy config found at %s — run `sqlitedeploy up` first", p)
 		}
 		return nil, fmt.Errorf("read config: %w", err)
 	}

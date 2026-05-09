@@ -25,8 +25,7 @@ bash test/e2e-sqld/run.sh
 
 | Step                       | What's exercised                                           |
 | -------------------------- | ---------------------------------------------------------- |
-| `sqlitedeploy init`        | Provider config, JWT keypair gen, replica token mint       |
-| `sqlitedeploy run`         | sqld primary + bottomless replication to MinIO             |
+| `sqlitedeploy up --no-tunnel --byo-storage` | Provider config, JWT keypair gen, replica token mint, sqld primary + bottomless replication to MinIO |
 | Stock sqlite3 write        | Local file write path (apps using existing SQLite drivers) |
 | Hrana HTTP read with JWT   | Edge-client read path + JWT verification                   |
 

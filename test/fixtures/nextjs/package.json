@@ -4,8 +4,7 @@
   "version": "0.0.0",
   "description": "Minimal example: how a Next.js / TypeScript app uses sqlitedeploy.",
   "scripts": {
-    "init-db": "sqlitedeploy init",
-    "replicate": "sqlitedeploy run",
+    "up": "sqlitedeploy up",
     "demo": "node app.js"
   },
   "dependencies": {

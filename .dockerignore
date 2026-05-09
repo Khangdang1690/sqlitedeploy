@@ -1,0 +1,13 @@
+# Don't ship build artifacts / vendor caches into the build context — they're
+# either reproducible (build/, dist/) or huge and irrelevant (node_modules,
+# .git history). The COPY in the Go stage will still pull source it needs.
+.git
+.github
+build/
+dist/
+node_modules/
+.sqlitedeploy/
+test/e2e-sqld/.sqlitedeploy
+*.log
+packaging/npm/platforms/*/bin
+packaging/maven/platforms/*/src/main/resources/META-INF/native

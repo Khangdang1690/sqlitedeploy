@@ -3,8 +3,7 @@
 # Workflow:
 #   pip install sqlitedeploy fastapi uvicorn
 #   sqlitedeploy auth login
-#   sqlitedeploy init                # creates ./data/app.db
-#   sqlitedeploy run &               # background replication daemon
+#   sqlitedeploy up &                # provisions storage + tunnel + sqld
 #   uvicorn main:app --port 8000     # your FastAPI app
 #
 # In production you'd run sqlitedeploy under a process manager (systemd,
@@ -16,7 +15,7 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI
 
-DB_PATH = "data/app.db"
+DB_PATH = ".sqlitedeploy/db.sqlite"
 app = FastAPI()
 
 

@@ -1,6 +1,6 @@
 // Package auth handles sqlitedeploy's JWT-based authentication for sqld.
 //
-// On primary nodes, `sqlitedeploy init` generates an Ed25519 keypair, writes
+// On primary nodes, `sqlitedeploy up` generates an Ed25519 keypair, writes
 // it under .sqlitedeploy/auth/, and mints a long-lived JWT for replicas to
 // authenticate to the primary's gRPC endpoint. Sqld verifies inbound JWTs
 // against the public key passed via `--auth-jwt-key-file`.

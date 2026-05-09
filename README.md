@@ -7,7 +7,15 @@
 
 **Turso-style SQLite, but you bring your own cloud bucket.**
 
-A free, distributed SQLite database in one terminal command:
+A **free**, distributed SQLite database in one terminal command. Every link in
+the default path is $0:
+
+- ✅ **Cloudflare R2** free tier (10 GB, $0 egress) — the durable backup
+- ✅ **TryCloudflare quick tunnel** — public HTTPS URL, no domain, no account
+- ✅ Bundled `sqld` (libsql-server, MIT) and `cloudflared` (free OSS)
+- ✅ No SaaS subscription of ours
+
+What you get:
 
 - A **primary** node serves your app over **Hrana HTTP** (so Cloudflare Workers, Lambda, and Vercel can connect) and over a regular SQLite file (so any language with a SQLite driver works natively).
 - **Read replicas** stream WAL frames live from the primary over gRPC — sub-second freshness, not the 5-second polling lag of WAL-shipping tools.
@@ -21,8 +29,8 @@ Internally, `sqlitedeploy` bundles [`sqld`](https://github.com/tursodatabase/lib
         PRIMARY HOST                                       READ REPLICA HOSTS
    ┌────────────────────────┐                          ┌──────────────────────┐
    │ your app (any lang)    │                          │ your app (read-only) │
-   │  ⇄ data/app.db (file)  │                          │  ⇄ data/app.db       │
    │  ⇄ Hrana :8080 (HTTP)  │                          │  ⇄ Hrana :8080       │
+   │     via @libsql/client │                          │     via @libsql/client │
    │            ▲           │                          │           ▲          │
    │            │           │                          │           │          │
    │           sqld ────gRPC :5001 (live WAL stream)──▶│         sqld         │
@@ -44,7 +52,7 @@ Internally, `sqlitedeploy` bundles [`sqld`](https://github.com/tursodatabase/lib
 ```
 
 * Exactly one node ever writes (the primary).
-* Writes go to the local SQLite file (via stock SQLite drivers) **or** through Hrana to sqld — sqld keeps both views in sync.
+* Apps connect to sqld over **Hrana HTTP** with `@libsql/client` (or any libsql-compatible driver). sqld manages the on-disk SQLite + WAL inside `.sqlitedeploy/db/` — don't poke at those files directly while sqld is running.
 * Read replicas stream WAL frames live from primary's gRPC; on first attach, they cold-start from the bucket (faster than replaying everything).
 * Edge clients (Workers, Lambda, Vercel) connect directly to primary's Hrana endpoint over HTTP — no sidecar required on the edge.
 * The bucket is your durable backup. Lose the primary, point a fresh sqld at the bucket with `--sync-from-storage` to recover.
@@ -105,15 +113,17 @@ make build                 # outputs dist/sqlitedeploy with sqld embedded
 
 If you skip `build-sqld`, the CLI falls back to looking for `sqld` on `$PATH`.
 
-### 2. Sign in to Cloudflare (managed flow — recommended)
+### 2. Try it locally (60 seconds, no signup, $0)
 
-You need a free Cloudflare account. Recommended free tiers if you want to mix providers later:
+```bash
+sqlitedeploy dev
+```
 
-| Provider          | Free tier             | Egress         |
-| ----------------- | --------------------- | -------------- |
-| **Cloudflare R2** | 10 GB                 | Free           |
-| Backblaze B2      | 10 GB                 | 1 GB/day free  |
-| AWS S3            | 5 GB (12 months only) | Charged        |
+Spins up sqld with a database directory at `.sqlitedeploy/db/` — no cloud, no auth, no account needed. Apps connect at `libsql://127.0.0.1:8080`. Persists between runs; pass `--reset` to wipe.
+
+### 3. Sign in to Cloudflare (one-time, free)
+
+You need a free Cloudflare account for the R2 bucket (10 GB free, $0 egress).
 
 **One-time R2 activation.** Cloudflare requires a one-time ToS click-through on each account before any R2 API call works. Visit <https://dash.cloudflare.com/?to=/:account/r2/overview> and click `Purchase R2 Plan` — it's free.
 
@@ -125,82 +135,82 @@ sqlitedeploy auth login
 
 This walks you through creating an API token and stores it at `~/.config/sqlitedeploy/credentials.yml` (mode 0600).
 
-### 3. Init the primary
+### 4. Bring it live — `sqlitedeploy up`
 
 ```bash
-sqlitedeploy init
+sqlitedeploy up
 ```
 
-The CLI:
+One command:
 
-1. Creates `./data/app.db` in WAL mode.
-2. Picks/creates a bucket and a scoped R2 access key (managed flow) or uses your `--access-key` / `--secret-key` (manual flow).
-3. Writes `./.sqlitedeploy/config.yml` with bucket + endpoint config.
-4. Generates an Ed25519 JWT keypair under `./.sqlitedeploy/auth/` and mints a long-lived replica token.
-5. Prints connection details.
+1. Provisions an R2 bucket (10 GB free) and a scoped access key
+2. Generates an Ed25519 JWT keypair for client + replica auth
+3. Starts the bundled sqld with bottomless replication
+4. Opens a Cloudflare Tunnel so apps reach sqld over HTTPS — **no domain, no port-forward, no TLS terminator, $0**
 
 Sample output:
 
 ```
-sqlitedeploy primary initialized
+[1/5] ✓ Cloudflare auth      (cached at ~/.config/sqlitedeploy/credentials.yml)
+[2/5] ✓ R2 bucket            sqlitedeploy-myapp (created, free 10 GB tier)
+[3/5] ✓ R2 access key        scoped to bucket
+[4/5] ✓ sqld primary         http://127.0.0.1:8080
+[5/5] ✓ Cloudflare Tunnel    https://big-river-1234.trycloudflare.com  (free, ephemeral)
 
-  Database file:     /home/me/myapp/data/app.db
-  Provider:          r2 (bucket=sqlitedeploy-myapp, prefix=db)
+✓ Your SQLite is live!
 
-  Endpoints (after `sqlitedeploy run`):
-    Hrana over HTTP:   http://127.0.0.1:8080   (apps + edge clients connect here)
-    gRPC for replicas: 0.0.0.0:5001            (replica nodes attach here)
-    Local file:        sqlite:///home/me/myapp/data/app.db
+  Public URL:  libsql://big-river-1234.trycloudflare.com
+  Auth token:  eyJhbGciOi…
+  Local DB:    /home/me/myapp/.sqlitedeploy/db/  (sqld-managed)
+  Provider:    r2 (bucket=sqlitedeploy-myapp, prefix=db)
 
-  JWT auth (Ed25519):
-    Public key:        .../.sqlitedeploy/auth/jwt_public.pem
-    Private key:       .../.sqlitedeploy/auth/jwt_private.pem
-    Replica token:     .../.sqlitedeploy/auth/replica.jwt
+Ctrl-C to stop · re-run `sqlitedeploy up` to resume · `sqlitedeploy down` to tear down
 ```
 
-For production exposure on the internet (so Workers can reach you), pass `--http-listen-addr 0.0.0.0:8080` to bind on all interfaces. Put a TLS terminator (Caddy / nginx / Cloudflare Tunnel) in front for HTTPS — sqld speaks plain HTTP itself.
+The first run downloads `cloudflared` (~30 MB, cached); subsequent runs skip that.
 
-### 4. Start sqld
-
-```bash
-sqlitedeploy run        # foreground; supervise with systemd / docker / etc.
-```
-
-This runs `sqld` with bottomless replication enabled. Apps and edge clients can now connect.
+> **Stable hostnames.** Quick tunnels are ephemeral (the `*.trycloudflare.com` URL changes between runs). For production with a custom domain, pass `--tunnel=named --hostname=db.example.com` (requires the domain on Cloudflare). For "expose-on-localhost-only" behavior, pass `--no-tunnel`.
 
 ### 5. Connect from your app
 
-**From a regular app** (local SQLite file works exactly like before):
+Connect to sqld over Hrana HTTP using any libsql-compatible client. **Don't open the on-disk SQLite file directly while sqld is running** — sqld owns the WAL and concurrent stock-driver access can corrupt it.
 
-```python
-# Python (FastAPI, Django, anything)
-import sqlite3
-db = sqlite3.connect("data/app.db")
-```
-
-```js
-// Node.js
-const Database = require('better-sqlite3');
-const db = new Database('data/app.db');
-```
-
-**From a Cloudflare Worker / Lambda / Vercel** (edge — connect to sqld over HTTP):
+**Node.js / TypeScript / Workers / Lambda / Vercel** — same client everywhere:
 
 ```ts
-// Worker / Lambda
 import { createClient } from "@libsql/client";
 
 const db = createClient({
-  url: "http://your-primary-host:8080",
-  authToken: env.SQLITEDEPLOY_REPLICA_JWT,  // the replica.jwt minted at init
+  url: env.SQLITEDEPLOY_URL,                 // libsql://big-river-1234.trycloudflare.com
+  authToken: env.SQLITEDEPLOY_REPLICA_JWT,   // the replica.jwt minted at up
 });
 
 const rows = await db.execute("SELECT * FROM users WHERE id = ?", [id]);
 ```
 
+**Python**: use [`libsql-client`](https://pypi.org/project/libsql-client/) (the same Hrana protocol):
+
+```python
+import libsql_client
+client = libsql_client.create_client_sync(
+    url=os.environ["SQLITEDEPLOY_URL"],
+    auth_token=os.environ["SQLITEDEPLOY_REPLICA_JWT"],
+)
+client.execute("SELECT 1")
+```
+
 See [`examples/cloudflare-workers-readonly/`](examples/cloudflare-workers-readonly/) for a working Worker.
 
-### 6. Attach a read replica (on another machine)
+> **Inspecting locally.** sqld's database file lives at `.sqlitedeploy/db/dbs/default/data` (with `-wal`/`-shm` siblings). To poke at it with the `sqlite3` CLI, **first stop sqld**, then `sqlite3 .sqlitedeploy/db/dbs/default/data`.
+
+### 6. Tear it down
+
+```bash
+sqlitedeploy down          # remove local .sqlitedeploy/ (config + DB + JWT keys)
+sqlitedeploy down --wipe   # also delete the R2 bucket
+```
+
+### 7. Attach a read replica (on another machine)
 
 Copy the JWT public key and replica token from the primary to the replica host (over scp — never paste secrets into chat):
 
@@ -222,24 +232,23 @@ First attach cold-starts from the bucket via bottomless, then keeps streaming WA
 
 ## CLI reference
 
-| Command                      | Purpose                                                                              |
-| ---------------------------- | ------------------------------------------------------------------------------------ |
-| `sqlitedeploy auth login`    | Sign in with a Cloudflare API token (stored at user-config dir)                      |
-| `sqlitedeploy auth status`   | Show which Cloudflare account the saved token authenticates as                       |
-| `sqlitedeploy auth logout`   | Forget the saved Cloudflare token                                                    |
-| `sqlitedeploy init`          | Set up a primary node (DB, JWT keypair, provider config)                             |
-| `sqlitedeploy run`           | Run sqld in primary mode with bottomless replication                                 |
-| `sqlitedeploy attach`        | Set up a read replica, streaming from the primary's gRPC                             |
-| `sqlitedeploy status`        | Show configured paths and endpoints                                                  |
-| `sqlitedeploy restore`       | (v2 stub) — for replica cold-start, use `attach`. See `--help` for the migration plan. |
-| `sqlitedeploy destroy`       | Remove local sqlitedeploy state (does NOT touch bucket)                              |
+| Command                      | Purpose                                                                       |
+| ---------------------------- | ----------------------------------------------------------------------------- |
+| `sqlitedeploy dev`           | Run sqld locally with no cloud, no auth, no signup — instant SQLite-as-a-service |
+| `sqlitedeploy up`            | Provision storage + start sqld + open a public Cloudflare Tunnel (the headline command) |
+| `sqlitedeploy down`          | Remove local state; `--wipe` also deletes the R2 bucket                       |
+| `sqlitedeploy auth login`    | Sign in with a Cloudflare API token (stored at user-config dir)               |
+| `sqlitedeploy auth status`   | Show which Cloudflare account the saved token authenticates as               |
+| `sqlitedeploy auth logout`   | Forget the saved Cloudflare token                                             |
+| `sqlitedeploy attach`        | Set up a read replica, streaming from the primary's gRPC                      |
+| `sqlitedeploy status`        | Show configured paths and endpoints                                           |
 
 Run any command with `--help` for full flags.
 
 ## Honest limitations
 
 * **Single-writer only.** Sqld doesn't fix this — SQLite is single-writer at the file level. If you need multiple writers, use [LiteFS](https://fly.io/docs/litefs/), [rqlite](https://rqlite.io/), or [Turso's managed product](https://turso.tech/).
-* **Primary must be network-reachable.** Edge clients (Workers, Lambda) connect over HTTP, so the primary needs a public endpoint. v1's "Litestream sidecar on a private VPS" model doesn't apply anymore.
+* **Primary must be network-reachable.** Edge clients (Workers, Lambda) connect over HTTP, so the primary needs a public endpoint. The default `up` flow gets you that for free via Cloudflare Tunnel; for production with a custom domain pass `--tunnel=named` or run your own reverse proxy.
 * **JWT keys to manage.** v2 uses Ed25519 JWTs for auth. Lose the private key on the primary and you can't mint new replica tokens. The keypair lives at `.sqlitedeploy/auth/` — back it up or commit to a sealed secrets store.
 * **Async durability.** Writes are flushed to object storage by bottomless on a periodic schedule. The last few seconds of writes can be lost on a primary crash before the backup ships.
 * **Free-tier ceilings.** R2/B2 free tiers cap at 10 GB. Watch your provider's dashboard.
@@ -249,36 +258,40 @@ Run any command with `--help` for full flags.
 
 ## How it actually works
 
-`sqlitedeploy init` does five things:
+`sqlitedeploy up` does these things on first run:
 
-1. Creates `./data/app.db` and runs `PRAGMA journal_mode=WAL` (sqld requires WAL).
-2. Stores your provider credentials in `./.sqlitedeploy/config.yml` (mode 0600, gitignored).
-3. Generates an Ed25519 JWT keypair under `./.sqlitedeploy/auth/`.
-4. Mints a long-lived replica JWT (10y) and writes it to `./.sqlitedeploy/auth/replica.jwt`.
-5. Resolves a `sqld` binary — preferring the one embedded into `sqlitedeploy` at build time, falling back to `$PATH`.
+1. Provisions an R2 bucket + scoped access key (managed flow), or accepts your existing creds (manual flow).
+2. Stores provider config + JWT keypair + replica token under `./.sqlitedeploy/`.
+3. Creates `./.sqlitedeploy/db/` as the database directory sqld will own (sqld 0.24+ treats `--db-path` as a directory and stores the actual SQLite at `dbs/default/data` inside).
+4. Resolves the bundled `sqld` binary (or falls back to `$PATH`).
+5. Starts sqld with bottomless replication:
 
-`sqlitedeploy run` then runs:
+   ```
+   sqld --db-path .sqlitedeploy/db \
+        --http-listen-addr 127.0.0.1:8080 \
+        --grpc-listen-addr 0.0.0.0:5001 \
+        --auth-jwt-key-file .sqlitedeploy/auth/jwt_public.pem \
+        --enable-bottomless-replication
+   ```
 
-```
-sqld --db-path data/app.db \
-     --http-listen-addr 127.0.0.1:8080 \
-     --grpc-listen-addr 0.0.0.0:5001 \
-     --auth-jwt-key-file .sqlitedeploy/auth/jwt_public.pem \
-     --enable-bottomless-replication
-```
+   with `LIBSQL_BOTTOMLESS_*` env vars set from the provider config.
 
-with `LIBSQL_BOTTOMLESS_*` env vars set from your provider config. Sqld speaks Hrana to apps, gRPC to replicas, and replicates WAL frames to your bucket via bottomless. All the runtime heavy lifting is sqld's; we're a packaging + bootstrap layer.
+6. Resolves `cloudflared` (cached download or `$PATH`) and runs `cloudflared tunnel --url http://127.0.0.1:8080` to obtain a public `https://*.trycloudflare.com` URL — no domain or account needed for the tunnel itself.
 
-`sqlitedeploy attach` does the inverse: writes a replica config, then runs sqld with `--primary-grpc-url` pointing at the primary. On first attach, `--sync-from-storage` seeds the local DB from the bucket; subsequent runs catch up over gRPC only.
+Subsequent runs skip steps 1–3 and just resume the stack.
+
+Sqld speaks Hrana to apps, gRPC to replicas, and replicates WAL frames to your bucket via bottomless. All the runtime heavy lifting is sqld's and cloudflared's; we're a packaging + bootstrap layer.
+
+`sqlitedeploy attach` is the replica counterpart: writes a replica config, then runs sqld with `--primary-grpc-url` pointing at the primary. On first attach, `--sync-from-storage` seeds the local DB from the bucket; subsequent runs catch up over gRPC only.
 
 ## Migration from v1 (Litestream-based)
 
 v2 is a hard cutover. The bucket layout is incompatible — v1 wrote LTX files; v2 writes bottomless format. There are no v1 production users to migrate, so the move is just:
 
 1. Upgrade `sqlitedeploy` to v2.
-2. `sqlitedeploy destroy` (drops local config; doesn't touch the bucket).
+2. `sqlitedeploy down` (drops local config; doesn't touch the bucket).
 3. Use a fresh bucket prefix (or a fresh bucket).
-4. Re-run `sqlitedeploy init`.
+4. Re-run `sqlitedeploy up`.
 
 If you do have production v1 data and want a migration path, file an issue.
 

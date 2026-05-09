@@ -4,7 +4,7 @@
 // support" pitch. With v1 (Litestream), Workers couldn't talk to your DB at
 // all because there was no daemon they could embed. With v2 (sqld), Workers
 // connect to the primary's Hrana endpoint over HTTP using @libsql/client and
-// authenticate with the replica JWT minted by `sqlitedeploy init`.
+// authenticate with the replica JWT minted by `sqlitedeploy up`.
 //
 // Deploy:
 //   wrangler secret put SQLITEDEPLOY_REPLICA_JWT < .sqlitedeploy/auth/replica.jwt
@@ -15,9 +15,9 @@
 import { createClient, type Client } from "@libsql/client";
 
 interface Env {
-	/** Hrana HTTP URL of the sqlitedeploy primary, e.g. https://db.example.com:8080. */
+	/** Hrana HTTPS URL of the sqlitedeploy primary, e.g. https://random.trycloudflare.com. */
 	PRIMARY_URL: string;
-	/** Replica JWT minted by `sqlitedeploy init`. Stored as a Wrangler secret. */
+	/** Replica JWT minted by `sqlitedeploy up`. Stored as a Wrangler secret. */
 	SQLITEDEPLOY_REPLICA_JWT: string;
 }
 
@@ -62,7 +62,7 @@ export default {
 			// Common causes:
 			//   - PRIMARY_URL unreachable (firewall / not running / wrong host)
 			//   - JWT signed by a different keypair than the primary expects
-			//   - JWT expired (init mints 10y tokens by default; rare)
+			//   - JWT expired (up mints 10y tokens by default; rare)
 			return Response.json(
 				{
 					ok: false,
