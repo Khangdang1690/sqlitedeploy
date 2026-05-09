@@ -71,17 +71,35 @@ SQLD_PLATFORMS := \
 build:
 	go build -ldflags="-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BIN_NAME) ./cmd/sqlitedeploy
 
-# Shallow-clone tursodatabase/libsql at $(LIBSQL_VERSION). Idempotent: if the
-# directory already exists, do nothing (delete it to refetch). Avoids submodule
-# bloat for normal contributors — only the release pipeline needs the source.
+# Shallow-clone tursodatabase/libsql at $(LIBSQL_VERSION). Idempotent: skips
+# the clone when Cargo.toml is already present (rm -rf the source dir to
+# refetch). Avoids submodule bloat for normal contributors — only the release
+# pipeline needs the source.
+#
+# Detect by Cargo.toml rather than .git: in CI, Swatinem/rust-cache restores
+# $(LIBSQL_SRC_DIR)/target/ from a prior build, so the directory may already
+# exist with just target/ inside (no .git, no source) before the clone. The
+# recipe stashes target/ aside, clones fresh, and puts target/ back so the
+# cargo cache survives across runs.
 .PHONY: fetch-libsql-source
 fetch-libsql-source:
-	@if [ -d "$(LIBSQL_SRC_DIR)/.git" ]; then \
+	@if [ -f "$(LIBSQL_SRC_DIR)/Cargo.toml" ]; then \
 		echo "✓ libsql source already at $(LIBSQL_SRC_DIR) (rm -rf to refetch)"; \
 	else \
 		mkdir -p "$$(dirname $(LIBSQL_SRC_DIR))"; \
+		bak="$$(dirname $(LIBSQL_SRC_DIR))/.libsql-target.bak"; \
+		rm -rf "$$bak"; \
+		if [ -d "$(LIBSQL_SRC_DIR)/target" ]; then \
+			echo "→ stashing cached target/ before clone"; \
+			mv "$(LIBSQL_SRC_DIR)/target" "$$bak"; \
+		fi; \
+		rm -rf "$(LIBSQL_SRC_DIR)"; \
 		echo "→ git clone --depth 1 --branch $(LIBSQL_VERSION) $(LIBSQL_REPO) $(LIBSQL_SRC_DIR)"; \
 		git clone --depth 1 --branch $(LIBSQL_VERSION) $(LIBSQL_REPO) $(LIBSQL_SRC_DIR); \
+		if [ -d "$$bak" ]; then \
+			mv "$$bak" "$(LIBSQL_SRC_DIR)/target"; \
+			echo "✓ restored cached target/"; \
+		fi; \
 	fi
 
 # Build sqld for the host platform only and copy it under internal/sqld/bin/.
