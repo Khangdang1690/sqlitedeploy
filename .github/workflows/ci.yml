@@ -1,0 +1,89 @@
+name: ci
+
+# Validate every PR + every push to a non-main branch. We do NOT publish from
+# this workflow; release.yml handles publishing on tag pushes. This workflow
+# exists so contributors get fast feedback that the Go build and the sqld
+# recipe still work without paying the cost of a full release run.
+
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  go:
+    name: go build + vet + test + packaging
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
+
+      - name: go test
+        run: go test ./...
+
+      - name: make build (host binary with placeholder sqld embedded)
+        run: make build
+
+      - name: packaging tests
+        # test/run-all.sh exercises the npm + pip + maven shims against the
+        # built host binary. Doesn't need a real sqld embedded — the shims
+        # only validate "binary is found and execed correctly."
+        run: bash test/run-all.sh
+
+  sqld-recipe:
+    name: validate sqld build recipe (linux-amd64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: cache cargo + target dir
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: build/libsql -> target
+          shared-key: sqld-x86_64-unknown-linux-gnu
+
+      - name: build sqld for linux-amd64
+        run: |
+          make build-sqld-target \
+            GO_OS=linux GO_ARCH=amd64 \
+            RUST_TARGET=x86_64-unknown-linux-gnu
+
+      - name: smoke-test the binary
+        run: |
+          set -euo pipefail
+          BIN=internal/sqld/bin/sqld-linux-amd64
+          ls -lh "$BIN"
+          test -x "$BIN" || (echo "FAIL: $BIN is not executable" && exit 1)
+          # Capture --help once so subsequent assertions don't re-exec the
+          # binary in a pipe (which used to mask permission-denied errors
+          # because bash's pipe exit code defaulted to the last command).
+          HELP="$("$BIN" --help)"
+          echo "$HELP" | head -40
+          echo "$HELP" | grep -- '--enable-bottomless-replication' \
+            || (echo "FAIL: sqld binary doesn't recognize --enable-bottomless-replication" && exit 1)
+          echo "OK: sqld built and recognizes bottomless flag"
+
+      - name: upload sqld artifact for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqld-linux-amd64-ci
+          path: internal/sqld/bin/sqld-linux-amd64
+          retention-days: 3

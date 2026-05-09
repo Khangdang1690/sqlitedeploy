@@ -2,6 +2,11 @@
 /dist/
 /Userskhangbinsqlitedeploy.exe
 
+# libsql source checkout (fetched by `make fetch-libsql-source`); not committed
+# because only the release pipeline needs it. The compiled sqld binaries that
+# ship with sqlitedeploy live under internal/sqld/bin/ and are committed.
+/build/
+
 # Runtime data
 /data/
 

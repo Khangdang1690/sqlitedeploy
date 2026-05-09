@@ -1,0 +1,1 @@
+PLACEHOLDER sqld-linux-amd64 — replaced by `make build-sqld-target GO_OS=linux GO_ARCH=amd64 RUST_TARGET=x86_64-unknown-linux-gnu` or by CI.

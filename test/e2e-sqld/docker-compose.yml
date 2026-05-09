@@ -1,0 +1,34 @@
+# MinIO + bucket-init for sqlitedeploy E2E tests.
+#
+# Starts a MinIO server with deterministic credentials and creates the test
+# bucket via the mc client. After `docker compose up -d`, the suite at
+# ./run.sh sees an S3-compatible endpoint at http://127.0.0.1:9000.
+
+services:
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: sqlitedeploytest
+      MINIO_ROOT_PASSWORD: sqlitedeploytestsecret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/ready"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  # One-shot: create the test bucket once MinIO is up.
+  mc-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 sqlitedeploytest sqlitedeploytestsecret &&
+        mc mb -p local/sqlitedeploy-e2e &&
+        echo 'bucket sqlitedeploy-e2e ready'
+      "

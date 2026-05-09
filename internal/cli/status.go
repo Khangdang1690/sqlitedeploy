@@ -1,22 +1,22 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/Khangdang1690/sqlitedeploy/internal/config"
-	"github.com/Khangdang1690/sqlitedeploy/internal/litestream"
 )
 
-// NewStatusCmd builds the `status` subcommand: dumps the configured paths,
-// local DB size, and litestream's view of replicated LTX files.
+// NewStatusCmd builds the `status` subcommand: prints the configured paths,
+// endpoints, and local DB size. The richer "what's in the bucket" view that
+// the v1 `litestream ltx` integration provided is replaced in v2 by hitting
+// sqld's admin API at cfg.AdminListenAddr — wired up as a follow-up.
 func NewStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show config, local DB stats, and replicated LTX files from object storage",
+		Short: "Show configured endpoints, paths, and local DB size",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dir, err := projectDir(cmd)
 			if err != nil {
@@ -26,36 +26,30 @@ func NewStatusCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Role:            %s\n", cfg.Role)
-			fmt.Printf("DB path:         %s\n", absDB(dir, cfg.DBPath))
-			fmt.Printf("Provider:        %s\n", cfg.Provider.Kind)
-			fmt.Printf("Bucket:          %s\n", cfg.Provider.Bucket)
-			fmt.Printf("Replica path:    %s\n", cfg.ReplicaPath)
-			if st, err := os.Stat(absDB(dir, cfg.DBPath)); err == nil {
-				fmt.Printf("DB size (local): %d bytes\n", st.Size())
-			} else {
-				fmt.Printf("DB size (local): n/a (%v)\n", err)
-			}
-
-			lsPath, err := litestream.Render(dir, cfg)
-			if err != nil {
-				return err
-			}
-			runner, err := litestream.NewRunner(lsPath)
-			if err != nil {
-				return err
-			}
-			out, err := runner.LTXFiles(context.Background(), absDB(dir, cfg.DBPath))
+			fmt.Printf("Role:              %s\n", cfg.Role)
+			fmt.Printf("DB path:           %s\n", absDB(dir, cfg.DBPath))
+			fmt.Printf("Provider:          %s\n", cfg.Provider.Kind)
+			fmt.Printf("Bucket:            %s\n", cfg.Provider.Bucket)
+			fmt.Printf("Bucket prefix:     %s\n", cfg.BucketPrefix)
 			fmt.Println()
-			fmt.Println("Replicated LTX files:")
-			if err != nil {
-				fmt.Printf("  (failed to list: %v)\n", err)
-				fmt.Println("  Note: this usually means replication hasn't started yet —")
-				fmt.Println("        run `sqlitedeploy run` to begin replicating to your bucket.")
-			} else if len(out) == 0 {
-				fmt.Println("  (none yet — nothing has been replicated to your bucket)")
+			switch cfg.Role {
+			case config.RolePrimary:
+				fmt.Printf("HTTP (Hrana):      http://%s\n", cfg.HTTPListenAddr)
+				fmt.Printf("gRPC (replicas):   %s\n", cfg.GRPCListenAddr)
+				fmt.Printf("Admin API:         http://%s\n", cfg.AdminListenAddr)
+			case config.RoleReplica:
+				fmt.Printf("HTTP (Hrana):      http://%s\n", cfg.HTTPListenAddr)
+				fmt.Printf("Streaming from:    %s\n", cfg.PrimaryGRPCURL)
+				if cfg.PrimaryHranaURL != "" {
+					fmt.Printf("Primary Hrana URL: %s\n", cfg.PrimaryHranaURL)
+				}
+			}
+			fmt.Println()
+
+			if st, err := os.Stat(absDB(dir, cfg.DBPath)); err == nil {
+				fmt.Printf("DB size (local):   %d bytes\n", st.Size())
 			} else {
-				fmt.Print(string(out))
+				fmt.Printf("DB size (local):   n/a (%v)\n", err)
 			}
 			return nil
 		},

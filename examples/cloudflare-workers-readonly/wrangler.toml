@@ -1,0 +1,15 @@
+name = "sqlitedeploy-worker-example"
+main = "src/worker.ts"
+compatibility_date = "2024-11-06"
+compatibility_flags = ["nodejs_compat"]
+
+# PRIMARY_URL is the Hrana HTTP endpoint of your sqlitedeploy primary.
+# Replace with your actual host. For local dev, use `wrangler dev` and a tunnel
+# (cloudflared / ngrok) so the Worker can reach your primary on localhost.
+[vars]
+PRIMARY_URL = "https://your-primary-host.example.com:8080"
+
+# SQLITEDEPLOY_REPLICA_JWT is the replica token minted by `sqlitedeploy init`.
+# It's a secret — never put it in this file or commit it. Set it with:
+#
+#   wrangler secret put SQLITEDEPLOY_REPLICA_JWT < .sqlitedeploy/auth/replica.jwt

@@ -9,8 +9,8 @@ import (
 
 // Permission group NAMES (not UUIDs — we resolve UUIDs at runtime via the
 // permission-groups catalog endpoint so Cloudflare can rotate IDs without
-// breaking us). Litestream needs both reads and writes against the bucket:
-// list segments, get snapshots/segments, put new segments.
+// breaking us). Sqld + bottomless need both reads and writes against the
+// bucket: list segments, get snapshots/segments, put new segments.
 const (
 	permNameR2BucketItemRead  = "Workers R2 Storage Bucket Item Read"
 	permNameR2BucketItemWrite = "Workers R2 Storage Bucket Item Write"
