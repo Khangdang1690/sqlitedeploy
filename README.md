@@ -87,7 +87,7 @@ go install github.com/Khangdang1690/sqlitedeploy/cmd/sqlitedeploy@latest
 sqlitedeploy --help
 ```
 
-The build is self-contained: the matching `sqld` is committed into the module under `internal/sqld/bin/` and embedded at compile time, so a `go install` produces the same binary the npm and pip packages ship.
+`go install` produces a CLI that, on first run, downloads the matching real `sqld` (~30 MB, cached under the user cache dir at `sqlitedeploy/`) from this repo's GitHub Releases. The npm, pip, and Maven packages, by contrast, ship `sqld` already embedded — no first-run download.
 
 **Java / Spring Boot** — via Maven Central:
 
@@ -111,7 +111,7 @@ make build-sqld            # cargo build sqld for the host platform
 make build                 # outputs dist/sqlitedeploy with sqld embedded
 ```
 
-If you skip `build-sqld`, the CLI falls back to looking for `sqld` on `$PATH`.
+If you skip `build-sqld`, the CLI falls back at runtime to `sqld` on `$PATH`. (The download-from-Releases fallback is enabled only in tagged release builds; a local `make build` still surfaces the loud "no sqld available" error so you notice the missing dependency.)
 
 ### 2. Try it locally (60 seconds, no signup, $0)
 
