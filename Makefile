@@ -87,6 +87,12 @@ fetch-libsql-source:
 # Build sqld for the host platform only and copy it under internal/sqld/bin/.
 # Use this for Phase 1 validation; CI builds the cross-platform matrix via
 # build-sqld-target (one job per Rust target on the matching native runner).
+#
+# Recipe uses && between commands so any failure aborts the make target —
+# previously the recipe used ; and ended in a trailing echo, which made `make`
+# report success even when cargo's output couldn't be located (real CI bug).
+# We invoke cargo with --manifest-path instead of `cd`-ing so the recipe's
+# subsequent `cp` paths still resolve from the repo root.
 .PHONY: build-sqld
 build-sqld: fetch-libsql-source
 	@mkdir -p $(SQLD_EMBED_DIR)
@@ -94,11 +100,14 @@ build-sqld: fetch-libsql-source
 	host_arch=$$(go env GOARCH); \
 	ext=""; [ "$$host_os" = "windows" ] && ext=".exe"; \
 	out="$(SQLD_EMBED_DIR)/sqld-$$host_os-$$host_arch$$ext"; \
-	echo "→ building sqld for host ($$host_os-$$host_arch); bottomless is a path dep, no feature flag needed"; \
-	cd $(LIBSQL_SRC_DIR) && cargo build --release -p libsql-server --bin sqld; \
-	cp "$(LIBSQL_SRC_DIR)/target/release/sqld$$ext" "$$out"; \
-	chmod +x "$$out" 2>/dev/null || true; \
-	ls -lh "$$out"; \
+	echo "→ building sqld for host ($$host_os-$$host_arch); bottomless is a path dep, no feature flag needed" && \
+	cargo build --release \
+		--manifest-path $(LIBSQL_SRC_DIR)/Cargo.toml \
+		-p libsql-server --bin sqld && \
+	cp "$(LIBSQL_SRC_DIR)/target/release/sqld$$ext" "$$out" && \
+	chmod +x "$$out" && \
+	test -x "$$out" && \
+	ls -lh "$$out" && \
 	echo "✓ sqld at $$out"
 
 # CI-facing: build sqld for one specific Go OS/arch + Rust target. Required
@@ -112,11 +121,15 @@ build-sqld-target: fetch-libsql-source
 	@mkdir -p $(SQLD_EMBED_DIR)
 	@ext=""; [ "$(GO_OS)" = "windows" ] && ext=".exe"; \
 	out="$(SQLD_EMBED_DIR)/sqld-$(GO_OS)-$(GO_ARCH)$$ext"; \
-	echo "→ building sqld for $(GO_OS)-$(GO_ARCH) ($(RUST_TARGET))"; \
-	cd $(LIBSQL_SRC_DIR) && cargo build --release -p libsql-server --bin sqld --target $(RUST_TARGET); \
-	cp "$(LIBSQL_SRC_DIR)/target/$(RUST_TARGET)/release/sqld$$ext" "$$out"; \
-	chmod +x "$$out" 2>/dev/null || true; \
-	ls -lh "$$out"; \
+	echo "→ building sqld for $(GO_OS)-$(GO_ARCH) ($(RUST_TARGET))" && \
+	cargo build --release \
+		--manifest-path $(LIBSQL_SRC_DIR)/Cargo.toml \
+		-p libsql-server --bin sqld \
+		--target $(RUST_TARGET) && \
+	cp "$(LIBSQL_SRC_DIR)/target/$(RUST_TARGET)/release/sqld$$ext" "$$out" && \
+	chmod +x "$$out" && \
+	test -x "$$out" && \
+	ls -lh "$$out" && \
 	echo "✓ sqld at $$out"
 
 # Cross-compile the Go CLI for every embedded platform. Assumes the matching

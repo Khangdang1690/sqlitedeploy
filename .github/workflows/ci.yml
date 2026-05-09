@@ -68,9 +68,16 @@ jobs:
 
       - name: smoke-test the binary
         run: |
-          ls -lh internal/sqld/bin/sqld-linux-amd64
-          internal/sqld/bin/sqld-linux-amd64 --help | head -40
-          internal/sqld/bin/sqld-linux-amd64 --help | grep -- '--enable-bottomless-replication' \
+          set -euo pipefail
+          BIN=internal/sqld/bin/sqld-linux-amd64
+          ls -lh "$BIN"
+          test -x "$BIN" || (echo "FAIL: $BIN is not executable" && exit 1)
+          # Capture --help once so subsequent assertions don't re-exec the
+          # binary in a pipe (which used to mask permission-denied errors
+          # because bash's pipe exit code defaulted to the last command).
+          HELP="$("$BIN" --help)"
+          echo "$HELP" | head -40
+          echo "$HELP" | grep -- '--enable-bottomless-replication' \
             || (echo "FAIL: sqld binary doesn't recognize --enable-bottomless-replication" && exit 1)
           echo "OK: sqld built and recognizes bottomless flag"
 
