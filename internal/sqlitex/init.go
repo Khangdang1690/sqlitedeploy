@@ -1,6 +1,6 @@
 // Package sqlitex creates and verifies SQLite database files for use with
-// Litestream. The single hard requirement Litestream imposes is WAL mode, so
-// everything in this package exists to enforce that.
+// sqld. The single hard requirement sqld imposes is WAL mode, so everything
+// in this package exists to enforce that.
 package sqlitex
 
 import (
@@ -50,7 +50,7 @@ func InitDB(path string) error {
 }
 
 // VerifyWAL confirms an existing SQLite database is in WAL mode. Used before
-// starting Litestream replication on a database the CLI didn't create.
+// starting sqld on a database the CLI didn't create.
 func VerifyWAL(path string) error {
 	if _, err := os.Stat(path); err != nil {
 		return fmt.Errorf("database file %s: %w", path, err)
@@ -66,7 +66,7 @@ func VerifyWAL(path string) error {
 		return err
 	}
 	if mode != "wal" {
-		return fmt.Errorf("database at %s is in %q mode; Litestream requires WAL. Run: sqlite3 %s 'PRAGMA journal_mode=WAL;'", path, mode, path)
+		return fmt.Errorf("database at %s is in %q mode; sqld requires WAL. Run: sqlite3 %s 'PRAGMA journal_mode=WAL;'", path, mode, path)
 	}
 	return nil
 }

@@ -2,9 +2,8 @@
 
 The Go CLI reads <cwd>/.sqlitedeploy/config.yml and <cwd>/data/app.db, so we
 must not chdir. On POSIX we use os.execvp to replace the Python process so
-signals (Ctrl-C while `sqlitedeploy run` is replicating) reach Litestream
-directly. Windows has no execvp semantics, so we subprocess and forward
-the return code.
+signals (Ctrl-C while `sqlitedeploy run` is serving) reach sqld directly.
+Windows is unsupported (sqld doesn't compile there) — use WSL2.
 """
 
 from __future__ import annotations

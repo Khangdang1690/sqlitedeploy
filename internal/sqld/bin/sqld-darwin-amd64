@@ -1,0 +1,1 @@
+PLACEHOLDER sqld-darwin-amd64 — replaced by `make build-sqld-target GO_OS=darwin GO_ARCH=amd64 RUST_TARGET=x86_64-apple-darwin` or by CI.

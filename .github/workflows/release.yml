@@ -9,8 +9,86 @@ permissions:
   contents: write   # needed to attach binaries to the GitHub release
 
 jobs:
-  build:
-    name: build all platform binaries
+  # Phase 1 of the release: build sqld for each target on the matching native
+  # runner. Each job uploads its sqld-<go-os>-<go-arch>[.exe] artifact, which
+  # the build-go job collects into internal/sqld/bin/ before the Go cross-build.
+  build-sqld:
+    name: build sqld (${{ matrix.go_os }}/${{ matrix.go_arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            go_os: linux
+            go_arch: amd64
+            rust_target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-latest
+            go_os: linux
+            go_arch: arm64
+            rust_target: aarch64-unknown-linux-gnu
+            # cross-compile via apt-installed aarch64-linux-gnu-gcc
+            apt_packages: gcc-aarch64-linux-gnu
+            cargo_linker_env: CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+          - runner: macos-13   # Intel runner; Apple-Silicon runners can also cross-compile this target if macos-13 is retired
+            go_os: darwin
+            go_arch: amd64
+            rust_target: x86_64-apple-darwin
+          - runner: macos-latest   # Apple Silicon
+            go_os: darwin
+            go_arch: arm64
+            rust_target: aarch64-apple-darwin
+          # Windows is intentionally absent: libsql-server's libsql-wal dep
+          # uses POSIX-only syscalls and does not compile on Windows. Upstream
+          # also doesn't ship Windows release binaries. Windows users: WSL.
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install linker for cross-compile (linux only)
+        if: matrix.apt_packages
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.apt_packages }}
+
+      - name: install rust toolchain with target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: cache cargo + target dir
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: build/libsql -> target
+          shared-key: sqld-${{ matrix.rust_target }}
+
+      - name: setup go (for `go env GOOS/GOARCH` on Unix; not strictly needed since we pass GO_OS/GO_ARCH)
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: false
+
+      - name: build sqld
+        env:
+          # forward the linker override for cross-compile targets
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: |
+          make build-sqld-target \
+            GO_OS=${{ matrix.go_os }} \
+            GO_ARCH=${{ matrix.go_arch }} \
+            RUST_TARGET=${{ matrix.rust_target }}
+
+      - name: upload sqld binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqld-${{ matrix.go_os }}-${{ matrix.go_arch }}
+          path: internal/sqld/bin/sqld-${{ matrix.go_os }}-${{ matrix.go_arch }}*
+          retention-days: 7
+          if-no-files-found: error
+
+  # Phase 2: collect all 6 sqld binaries into internal/sqld/bin/, then Go
+  # cross-build the sqlitedeploy CLI for every platform with each binary
+  # embedded for its matching GOOS/GOARCH.
+  build-go:
+    name: cross-build sqlitedeploy CLI
+    needs: build-sqld
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.value }}
@@ -25,12 +103,22 @@ jobs:
           echo "value=${version}" >> "$GITHUB_OUTPUT"
           echo "version: ${version}"
 
+      - name: download all sqld artifacts into internal/sqld/bin/
+        uses: actions/download-artifact@v4
+        with:
+          path: internal/sqld/bin/
+          pattern: sqld-*
+          merge-multiple: true
+
+      - name: list embedded sqld binaries
+        run: ls -lh internal/sqld/bin/
+
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
           cache: true
 
-      - name: cross-compile binaries
+      - name: cross-compile sqlitedeploy CLI
         run: make release VERSION=${{ steps.version.outputs.value }}
 
       - name: upload binaries artifact
@@ -42,7 +130,7 @@ jobs:
 
   publish-npm:
     name: publish npm packages
-    needs: build
+    needs: build-go
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,7 +147,7 @@ jobs:
           path: dist/
 
       - name: stamp versions in manifests
-        run: node scripts/stamp-versions.js ${{ needs.build.outputs.version }}
+        run: node scripts/stamp-versions.js ${{ needs.build-go.outputs.version }}
 
       - name: copy binaries into platform packages
         run: make package-npm
@@ -83,7 +171,7 @@ jobs:
 
   publish-pypi:
     name: publish pypi wheels
-    needs: build
+    needs: build-go
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -102,10 +190,10 @@ jobs:
           path: dist/
 
       - name: stamp version in pip manifests
-        run: python3 scripts/stamp-versions.py ${{ needs.build.outputs.version }}
+        run: python3 scripts/stamp-versions.py ${{ needs.build-go.outputs.version }}
 
       - name: build all platform wheels
-        run: make package-pip VERSION=${{ needs.build.outputs.version }}
+        run: make package-pip VERSION=${{ needs.build-go.outputs.version }}
 
       - name: upload wheels to pypi
         env:
@@ -115,7 +203,7 @@ jobs:
 
   publish-maven:
     name: publish maven central artifacts
-    needs: build
+    needs: build-go
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -141,10 +229,10 @@ jobs:
           path: dist/
 
       - name: stamp version in pom.xml files
-        run: node scripts/stamp-versions-maven.js ${{ needs.build.outputs.version }}
+        run: node scripts/stamp-versions-maven.js ${{ needs.build-go.outputs.version }}
 
       - name: copy binaries into platform modules
-        run: make prepare-maven VERSION=${{ needs.build.outputs.version }}
+        run: make prepare-maven VERSION=${{ needs.build-go.outputs.version }}
 
       - name: deploy to maven central (sonatype central portal)
         env:
@@ -156,7 +244,7 @@ jobs:
 
   github-release:
     name: attach binaries to github release
-    needs: build
+    needs: build-go
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

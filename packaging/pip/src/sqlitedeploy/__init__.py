@@ -1,4 +1,4 @@
-"""sqlitedeploy: distributed SQLite with Litestream-backed replication.
+"""sqlitedeploy: distributed SQLite with sqld + bottomless replication.
 
 This package is a thin wrapper that ships the prebuilt Go binary for the
 host platform. All real logic lives in the Go CLI; this Python package

@@ -2,9 +2,10 @@
 //
 // Layout on disk:
 //
-//	<project>/.sqlitedeploy/config.yml      — written by `init` / `attach`
-//	<project>/.sqlitedeploy/litestream.yml  — generated; passed to litestream
-//	<project>/data/app.db                   — the SQLite file
+//	<project>/.sqlitedeploy/config.yml          — written by `init` / `attach`
+//	<project>/.sqlitedeploy/auth/jwt_*.pem      — Ed25519 JWT keypair (init)
+//	<project>/.sqlitedeploy/auth/replica.jwt    — long-lived replica token (init)
+//	<project>/data/app.db                       — the SQLite file managed by sqld
 package config
 
 import (
@@ -25,9 +26,6 @@ const (
 
 	// ConfigFile is the persisted user config inside DirName.
 	ConfigFile = "config.yml"
-
-	// LitestreamFile is the generated litestream config inside DirName.
-	LitestreamFile = "litestream.yml"
 )
 
 // Role distinguishes a primary node (writes + replicates) from a read replica
@@ -47,13 +45,45 @@ type Config struct {
 	DBPath   string           `yaml:"db_path"`
 	Provider providers.Config `yaml:"provider"`
 
-	// ReplicaPath is the optional sub-path within the bucket where this DB's
-	// WAL lives. Lets multiple databases share one bucket. Defaults to "db".
-	ReplicaPath string `yaml:"replica_path,omitempty"`
+	// BucketPrefix is the bottomless prefix used to namespace this DB's
+	// data within the bucket. Lets multiple databases share one bucket.
+	// Maps to LIBSQL_BOTTOMLESS_DB_NAME at runtime. Defaults to "db".
+	BucketPrefix string `yaml:"bucket_prefix,omitempty"`
 
-	// PullIntervalSeconds is the periodic restore cadence on replica nodes.
-	// Ignored on primaries.
-	PullIntervalSeconds int `yaml:"pull_interval_seconds,omitempty"`
+	// HTTPListenAddr exposes sqld's HTTP API to apps. On primaries this is
+	// also where edge clients (Workers, Lambda) connect via Hrana-over-HTTP.
+	// Default 127.0.0.1:8080; set to 0.0.0.0:8080 for production exposure.
+	HTTPListenAddr string `yaml:"http_listen_addr,omitempty"`
+
+	// HranaListenAddr exposes Hrana over WebSocket. Optional; if empty,
+	// only HTTP is exposed.
+	HranaListenAddr string `yaml:"hrana_listen_addr,omitempty"`
+
+	// GRPCListenAddr (primary only) is where replica nodes connect to
+	// stream WAL frames. Default 0.0.0.0:5001.
+	GRPCListenAddr string `yaml:"grpc_listen_addr,omitempty"`
+
+	// AdminListenAddr is sqld's admin HTTP API used by `sqlitedeploy
+	// status`. Bind to localhost. Default 127.0.0.1:8081.
+	AdminListenAddr string `yaml:"admin_listen_addr,omitempty"`
+
+	// PrimaryGRPCURL (replica only) is the primary's gRPC endpoint, e.g.
+	// "http://primary.example.com:5001". Required on replicas.
+	PrimaryGRPCURL string `yaml:"primary_grpc_url,omitempty"`
+
+	// PrimaryHranaURL (replica only) is informational — the primary's
+	// Hrana endpoint, useful to display in status output and for direct
+	// edge-client access without going through this replica.
+	PrimaryHranaURL string `yaml:"primary_hrana_url,omitempty"`
+
+	// JWTPublicKeyPath is the relative-to-DirName (or absolute) path to
+	// the Ed25519 public key sqld uses to verify inbound JWTs. Required
+	// on both primary and replicas. Default "auth/jwt_public.pem".
+	JWTPublicKeyPath string `yaml:"jwt_public_key_path,omitempty"`
+
+	// JWTPrivateKeyPath (primary only) is the path to the Ed25519 private
+	// key used to mint replica tokens. Default "auth/jwt_private.pem".
+	JWTPrivateKeyPath string `yaml:"jwt_private_key_path,omitempty"`
 }
 
 // CurrentVersion is bumped whenever the on-disk schema changes.
@@ -61,19 +91,18 @@ const CurrentVersion = 1
 
 // Default values.
 const (
-	DefaultDBPath              = "data/app.db"
-	DefaultReplicaPath         = "db"
-	DefaultPullIntervalSeconds = 5
+	DefaultDBPath            = "data/app.db"
+	DefaultBucketPrefix      = "db"
+	DefaultHTTPListenAddr    = "127.0.0.1:8080"
+	DefaultGRPCListenAddr    = "0.0.0.0:5001"
+	DefaultAdminListenAddr   = "127.0.0.1:8081"
+	DefaultJWTPublicKeyPath  = "auth/jwt_public.pem"
+	DefaultJWTPrivateKeyPath = "auth/jwt_private.pem"
 )
 
 // Path returns the absolute path to the config file inside dir.
 func Path(projectDir string) string {
 	return filepath.Join(projectDir, DirName, ConfigFile)
-}
-
-// LitestreamPath returns the absolute path to the generated litestream.yml.
-func LitestreamPath(projectDir string) string {
-	return filepath.Join(projectDir, DirName, LitestreamFile)
 }
 
 // Load reads config from <projectDir>/.sqlitedeploy/config.yml.
@@ -118,12 +147,35 @@ func (c *Config) applyDefaults() {
 	if c.DBPath == "" {
 		c.DBPath = DefaultDBPath
 	}
-	if c.ReplicaPath == "" {
-		c.ReplicaPath = DefaultReplicaPath
+	if c.BucketPrefix == "" {
+		c.BucketPrefix = DefaultBucketPrefix
 	}
-	if c.PullIntervalSeconds == 0 {
-		c.PullIntervalSeconds = DefaultPullIntervalSeconds
+	if c.HTTPListenAddr == "" {
+		c.HTTPListenAddr = DefaultHTTPListenAddr
 	}
+	if c.AdminListenAddr == "" {
+		c.AdminListenAddr = DefaultAdminListenAddr
+	}
+	if c.JWTPublicKeyPath == "" {
+		c.JWTPublicKeyPath = DefaultJWTPublicKeyPath
+	}
+	// GRPCListenAddr and JWTPrivateKeyPath default only on primaries; the
+	// caller (init.go) is in a better position to set them since it knows
+	// the role.
+}
+
+// ResolveAuthPath resolves a JWT key path that may be relative-to-DirName or
+// absolute. Used by run/attach to convert config values into actual paths
+// passed to sqld via --auth-jwt-key-file.
+func (c *Config) ResolveAuthPath(projectDir, p string) string {
+	if p == "" {
+		return ""
+	}
+	// If absolute, use as-is.
+	if filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(projectDir, DirName, p)
 }
 
 // ensureGitignore appends ".sqlitedeploy/" to a project's .gitignore if a git

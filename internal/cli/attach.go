@@ -7,83 +7,127 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/Khangdang1690/sqlitedeploy/internal/auth"
 	"github.com/Khangdang1690/sqlitedeploy/internal/config"
-	"github.com/Khangdang1690/sqlitedeploy/internal/litestream"
 	"github.com/Khangdang1690/sqlitedeploy/internal/providers"
+	"github.com/Khangdang1690/sqlitedeploy/internal/sqld"
 )
 
 // NewAttachCmd builds the `attach` subcommand: bootstraps a read-replica node.
-// Pulls the latest snapshot from object storage and then runs a periodic
-// restore loop so the local SQLite file stays near-real-time.
+// Streams WAL frames live from the primary's gRPC endpoint (sub-second
+// freshness), and on first run seeds the local DB from the bucket via
+// bottomless to avoid replaying everything over the network.
 func NewAttachCmd() *cobra.Command {
 	var (
-		providerKind  string
-		bucket        string
-		accountID     string
-		region        string
-		endpoint      string
-		accessKey     string
-		secretKey     string
-		dbPath        string
-		replicaPath   string
-		pullInterval  int
-		oneShot       bool
+		providerKind   string
+		bucket         string
+		accountID      string
+		region         string
+		endpoint       string
+		accessKey      string
+		secretKey      string
+		dbPath         string
+		bucketPrefix   string
+		primaryGRPCURL string
+		primaryHTTPURL string
+		authTokenFile  string
+		jwtPublicFile  string
+		httpListenAddr string
+		oneShot        bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "attach",
-		Short: "Attach this node as a read replica",
-		Long: `Pull the latest snapshot from the object-storage master into a local
-SQLite file and keep it near-real-time by re-running ` + "`litestream restore`" + ` on
-an interval.
+		Short: "Attach this node as a sqld read replica",
+		Long: `Attach this host as a read-only replica: starts sqld in replica mode,
+streaming WAL frames from the primary's gRPC endpoint live (sub-second
+freshness) and serving Hrana locally for app reads.
 
-This node is read-only. Writes from a replica are not supported and will not
-be replicated back to the master.`,
+On first attach, the local DB is seeded from the bucket via bottomless before
+the live stream catches up — much faster than replaying everything from gRPC
+for large databases.
+
+You'll need three things from the primary host (transferred via scp / secure
+channel — never paste secrets into chat):
+  - the JWT public key:    .sqlitedeploy/auth/jwt_public.pem
+  - the replica JWT token: .sqlitedeploy/auth/replica.jwt
+  - the primary's gRPC URL (--primary-grpc-url)
+
+Plus the same bucket credentials the primary uses, for the cold-start seed.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dir, err := projectDir(cmd)
 			if err != nil {
 				return err
 			}
 
-			cfg, err := loadOrInitReplicaConfig(dir, &replicaInputs{
-				providerKind: providerKind, bucket: bucket, accountID: accountID,
-				region: region, endpoint: endpoint, accessKey: accessKey, secretKey: secretKey,
-				dbPath: dbPath, replicaPath: replicaPath, pullInterval: pullInterval,
+			cfg, isFirstAttach, err := loadOrInitReplicaConfig(dir, &replicaInputs{
+				providerKind:   providerKind,
+				bucket:         bucket,
+				accountID:      accountID,
+				region:         region,
+				endpoint:       endpoint,
+				accessKey:      accessKey,
+				secretKey:      secretKey,
+				dbPath:         dbPath,
+				bucketPrefix:   bucketPrefix,
+				primaryGRPCURL: primaryGRPCURL,
+				primaryHTTPURL: primaryHTTPURL,
+				jwtPublicFile:  jwtPublicFile,
+				httpListenAddr: httpListenAddr,
 			})
 			if err != nil {
 				return err
 			}
 
-			lsPath, err := litestream.Render(dir, cfg)
+			prov, err := providers.FromConfig(cfg.Provider)
 			if err != nil {
 				return err
 			}
-			runner, err := litestream.NewRunner(lsPath)
+
+			runner, err := sqld.NewRunner()
 			if err != nil {
 				return err
 			}
 
 			absDBPath := absDB(dir, cfg.DBPath)
-			prov, err := providers.FromConfig(cfg.Provider)
-			if err != nil {
+			if err := os.MkdirAll(filepath.Dir(absDBPath), 0o755); err != nil {
 				return err
 			}
-			replicaURL := litestream.ReplicaURL(prov, cfg.ReplicaPath)
 
-			fmt.Printf("→ Initial restore from %s\n", replicaURL)
-			if err := runEnvWrappedRestore(runner, absDBPath, replicaURL, true /* ifNotExists */, prov); err != nil {
-				return fmt.Errorf("initial restore: %w", err)
+			tokenPath := authTokenFile
+			if tokenPath == "" {
+				tokenPath = filepath.Join(dir, config.DirName, auth.DirName, auth.ReplicaTokenFile)
+			}
+			if _, err := os.Stat(tokenPath); err != nil {
+				return fmt.Errorf("replica JWT not found at %s — copy it from the primary's .sqlitedeploy/auth/replica.jwt over scp/secure channel, then re-run", tokenPath)
+			}
+
+			pubKeyPath := cfg.ResolveAuthPath(dir, cfg.JWTPublicKeyPath)
+			if _, err := os.Stat(pubKeyPath); err != nil {
+				return fmt.Errorf("JWT public key not found at %s — copy it from the primary's .sqlitedeploy/auth/jwt_public.pem", pubKeyPath)
+			}
+
+			opts := sqld.ReplicaOpts{
+				DBPath:          absDBPath,
+				HTTPListenAddr:  cfg.HTTPListenAddr,
+				HranaListenAddr: cfg.HranaListenAddr,
+				PrimaryGRPCURL:  cfg.PrimaryGRPCURL,
+				AuthJWTKeyFile:  pubKeyPath,
+				BottomlessEnv:   sqld.BottomlessEnv(prov, cfg.BucketPrefix),
+				SyncFromStorage: isFirstAttach,
 			}
 
 			fmt.Println()
 			fmt.Println("✓ sqlitedeploy replica attached")
-			fmt.Printf("  Database file (read-only): %s\n", absDBPath)
-			fmt.Printf("  Connection (URI):          sqlite:///%s?mode=ro\n", filepath.ToSlash(absDBPath))
-			fmt.Printf("  Pull interval:             %ds\n", cfg.PullIntervalSeconds)
+			fmt.Printf("  Local DB:                  %s\n", absDBPath)
+			fmt.Printf("  Local read endpoint:       http://%s\n", cfg.HTTPListenAddr)
+			fmt.Printf("  Streaming from primary:    %s\n", cfg.PrimaryGRPCURL)
+			if isFirstAttach {
+				fmt.Println("  Cold-start seed:           bottomless (bucket → local DB)")
+			}
 			fmt.Println()
 
 			if oneShot {
@@ -92,7 +136,7 @@ be replicated back to the master.`,
 
 			ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
-			return restoreLoop(ctx, runner, absDBPath, replicaURL, prov, time.Duration(cfg.PullIntervalSeconds)*time.Second)
+			return runner.ServeReplica(ctx, opts)
 		},
 	}
 	addProjectDirFlag(cmd)
@@ -104,32 +148,46 @@ be replicated back to the master.`,
 	cmd.Flags().StringVar(&accessKey, "access-key", envOrDefault("SQLITEDEPLOY_ACCESS_KEY", ""), "access key (or env SQLITEDEPLOY_ACCESS_KEY) — read-only key recommended")
 	cmd.Flags().StringVar(&secretKey, "secret-key", envOrDefault("SQLITEDEPLOY_SECRET_KEY", ""), "secret key (or env SQLITEDEPLOY_SECRET_KEY)")
 	cmd.Flags().StringVar(&dbPath, "db-path", config.DefaultDBPath, "where to put the local replica SQLite file")
-	cmd.Flags().StringVar(&replicaPath, "replica-path", config.DefaultReplicaPath, "sub-path within the bucket (must match primary's --replica-path)")
-	cmd.Flags().IntVar(&pullInterval, "pull-interval", config.DefaultPullIntervalSeconds, "seconds between restore pulls")
-	cmd.Flags().BoolVar(&oneShot, "one-shot", false, "perform initial restore then exit (skip the periodic refresh loop)")
+	cmd.Flags().StringVar(&bucketPrefix, "bucket-prefix", config.DefaultBucketPrefix, "bottomless prefix within the bucket (must match primary's --bucket-prefix)")
+	cmd.Flags().StringVar(&primaryGRPCURL, "primary-grpc-url", "", "primary's gRPC URL, e.g. http://primary.example.com:5001 (required)")
+	cmd.Flags().StringVar(&primaryHTTPURL, "primary-http-url", "", "primary's Hrana HTTP URL (informational; defaults to derived from --primary-grpc-url)")
+	cmd.Flags().StringVar(&authTokenFile, "auth-token-file", "", "path to replica.jwt copied from primary (default: .sqlitedeploy/auth/replica.jwt under -C)")
+	cmd.Flags().StringVar(&jwtPublicFile, "jwt-public-key-file", "", "path to jwt_public.pem copied from primary (default: .sqlitedeploy/auth/jwt_public.pem under -C)")
+	cmd.Flags().StringVar(&httpListenAddr, "http-listen-addr", config.DefaultHTTPListenAddr, "where this replica's local Hrana endpoint listens")
+	cmd.Flags().BoolVar(&oneShot, "one-shot", false, "validate config and exit without starting the replica daemon")
 	return cmd
 }
 
 type replicaInputs struct {
 	providerKind, bucket, accountID, region, endpoint, accessKey, secretKey string
-	dbPath, replicaPath                                                     string
-	pullInterval                                                            int
+	dbPath, bucketPrefix                                                    string
+	primaryGRPCURL, primaryHTTPURL                                          string
+	jwtPublicFile, httpListenAddr                                           string
 }
 
-func loadOrInitReplicaConfig(dir string, in *replicaInputs) (*config.Config, error) {
+// loadOrInitReplicaConfig returns the replica's config (loading existing or
+// building from flags) and a flag indicating whether this is the first attach
+// on this host (so we know to set --sync-from-storage for bottomless seed).
+func loadOrInitReplicaConfig(dir string, in *replicaInputs) (*config.Config, bool, error) {
 	if cfg, err := config.Load(dir); err == nil {
-		// Existing config — reuse, ignore CLI flags so we don't silently change creds.
+		// Existing config — reuse, ignore CLI flags (don't silently change creds).
 		if cfg.Role == "" {
 			cfg.Role = config.RoleReplica
 		}
-		return cfg, nil
+		// Decide first-attach by whether the local DB already exists.
+		dbAbs := absDB(dir, cfg.DBPath)
+		_, statErr := os.Stat(dbAbs)
+		isFirst := os.IsNotExist(statErr)
+		return cfg, isFirst, nil
 	}
-	// No config yet — build from flags. Replicas always use the manual path:
-	// they need to point at an *existing* primary's bucket, so there's nothing
-	// for the managed (auto-create) flow to do here.
+
+	if in.primaryGRPCURL == "" {
+		return nil, false, fmt.Errorf("--primary-grpc-url is required when bootstrapping a new replica config")
+	}
+
 	kind, err := providers.ParseKind(in.providerKind)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	prov, err := buildProviderManual(kind, providerInputs{
 		kindStr: in.providerKind, bucket: in.bucket, accountID: in.accountID,
@@ -137,64 +195,26 @@ func loadOrInitReplicaConfig(dir string, in *replicaInputs) (*config.Config, err
 		accessKey: in.accessKey, secretKey: in.secretKey,
 	})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	cfg := &config.Config{
-		Role:                config.RoleReplica,
-		DBPath:              in.dbPath,
-		Provider:            providers.ToConfig(prov),
-		ReplicaPath:         in.replicaPath,
-		PullIntervalSeconds: in.pullInterval,
+		Role:             config.RoleReplica,
+		DBPath:           in.dbPath,
+		Provider:         providers.ToConfig(prov),
+		BucketPrefix:     in.bucketPrefix,
+		HTTPListenAddr:   in.httpListenAddr,
+		PrimaryGRPCURL:   in.primaryGRPCURL,
+		PrimaryHranaURL:  in.primaryHTTPURL,
+		JWTPublicKeyPath: config.DefaultJWTPublicKeyPath,
 	}
 	if err := os.MkdirAll(filepath.Dir(absDB(dir, cfg.DBPath)), 0o755); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := config.Save(dir, cfg); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return cfg, nil
-}
-
-// restoreLoop re-runs `litestream restore` on the configured cadence so the
-// replica DB stays near-real-time. We tolerate transient errors (network blips
-// happen) and only abort on context cancellation.
-func restoreLoop(ctx context.Context, r *litestream.Runner, dbPath, replicaURL string, prov providers.Provider, interval time.Duration) error {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			if err := runEnvWrappedRestore(r, dbPath, replicaURL, false, prov); err != nil {
-				fmt.Fprintf(os.Stderr, "warn: restore tick failed: %v\n", err)
-			}
-		}
-	}
-}
-
-// runEnvWrappedRestore invokes Runner.Restore with provider credentials
-// exported as AWS-style env vars, so the litestream subprocess picks them up
-// even when restoring from a URL (the URL form doesn't carry credentials).
-func runEnvWrappedRestore(r *litestream.Runner, dbPath, replicaURL string, ifNotExists bool, prov providers.Provider) error {
-	prevAK, hadAK := os.LookupEnv("LITESTREAM_ACCESS_KEY_ID")
-	prevSK, hadSK := os.LookupEnv("LITESTREAM_SECRET_ACCESS_KEY")
-	os.Setenv("LITESTREAM_ACCESS_KEY_ID", prov.AccessKeyID())
-	os.Setenv("LITESTREAM_SECRET_ACCESS_KEY", prov.SecretAccessKey())
-	defer func() {
-		if hadAK {
-			os.Setenv("LITESTREAM_ACCESS_KEY_ID", prevAK)
-		} else {
-			os.Unsetenv("LITESTREAM_ACCESS_KEY_ID")
-		}
-		if hadSK {
-			os.Setenv("LITESTREAM_SECRET_ACCESS_KEY", prevSK)
-		} else {
-			os.Unsetenv("LITESTREAM_SECRET_ACCESS_KEY")
-		}
-	}()
-
-	return r.Restore(context.Background(), dbPath, replicaURL, ifNotExists)
+	// Fresh replica config + no DB yet → first attach.
+	return cfg, true, nil
 }
 
 func absDB(projectDir, dbPath string) string {

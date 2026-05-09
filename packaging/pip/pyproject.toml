@@ -5,22 +5,20 @@ build-backend = "hatchling.build"
 [project]
 name = "sqlitedeploy"
 version = "0.0.0"
-description = "Distributed SQLite with Litestream-backed object-storage replication. Installs the platform-native sqlitedeploy CLI binary."
+description = "Distributed SQLite with sqld + bottomless replication to your own S3-compatible bucket. Installs the platform-native sqlitedeploy CLI binary."
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.8"
 authors = [{ name = "sqlitedeploy contributors" }]
-keywords = ["sqlite", "litestream", "replication", "database", "r2", "s3", "backup", "cli"]
+keywords = ["sqlite", "sqld", "libsql", "bottomless", "replication", "database", "r2", "s3", "edge", "cli"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS",
-    "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
     "Topic :: Database",
-    "Topic :: System :: Archiving :: Backup",
 ]
 
 [project.urls]

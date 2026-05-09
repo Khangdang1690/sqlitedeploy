@@ -20,13 +20,12 @@ var version = "dev"
 func main() {
 	root := &cobra.Command{
 		Use:           "sqlitedeploy",
-		Short:         "Free, distributed SQLite via object storage + Litestream",
-		Long: `sqlitedeploy bootstraps a SQLite database whose durable master lives in
-your own object-storage bucket (Cloudflare R2 / Backblaze B2 / S3) and whose
-working copy lives next to your application.
-
-The primary node owns writes; replica nodes pull near-real-time copies. Any
-language with a SQLite driver can connect to the local file directly.`,
+		Short:         "Distributed SQLite (sqld + bottomless) over your own object-storage bucket",
+		Long: `sqlitedeploy bootstraps a SQLite database whose durable backup lives in
+your own object-storage bucket (Cloudflare R2 / Backblaze B2 / S3). It bundles
+sqld (libsql-server) so apps + edge clients connect over Hrana HTTP, replicas
+stream WAL frames live from the primary's gRPC endpoint, and any language with
+a SQLite driver can still open the local file directly.`,
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -1,7 +1,7 @@
 {
   "name": "sqlitedeploy",
   "version": "0.0.0",
-  "description": "Distributed SQLite with Litestream-backed object-storage replication. Installs the platform-native sqlitedeploy CLI binary.",
+  "description": "Distributed SQLite with sqld + bottomless replication to your own S3-compatible bucket. Installs the platform-native sqlitedeploy CLI binary.",
   "license": "Apache-2.0",
   "homepage": "https://github.com/Khangdang1690/sqlitedeploy",
   "repository": {
@@ -13,12 +13,14 @@
   },
   "keywords": [
     "sqlite",
-    "litestream",
+    "sqld",
+    "libsql",
+    "bottomless",
     "replication",
     "database",
     "r2",
     "s3",
-    "backup",
+    "edge",
     "cli"
   ],
   "bin": {
@@ -36,8 +38,6 @@
     "@weirdvl/linux-x64": "0.0.0",
     "@weirdvl/linux-arm64": "0.0.0",
     "@weirdvl/darwin-x64": "0.0.0",
-    "@weirdvl/darwin-arm64": "0.0.0",
-    "@weirdvl/win32-x64": "0.0.0",
-    "@weirdvl/win32-arm64": "0.0.0"
+    "@weirdvl/darwin-arm64": "0.0.0"
   }
 }

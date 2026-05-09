@@ -11,13 +11,13 @@ const (
 	KindS3 Kind = "s3"
 )
 
-// Provider describes the minimum surface needed to render a Litestream replica
-// block and validate that credentials work.
+// Provider describes the minimum surface needed to point sqld's bottomless
+// replication at an S3-compatible bucket and validate that credentials work.
 type Provider interface {
 	Kind() Kind
 	Bucket() string
 
-	// Endpoint is the S3-compatible endpoint URL Litestream should talk to.
+	// Endpoint is the S3-compatible endpoint URL bottomless should talk to.
 	// Empty string means "use the default AWS S3 endpoint".
 	Endpoint() string
 

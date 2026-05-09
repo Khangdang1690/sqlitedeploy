@@ -11,19 +11,23 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Khangdang1690/sqlitedeploy/internal/auth"
 	"github.com/Khangdang1690/sqlitedeploy/internal/cloudflare"
 	"github.com/Khangdang1690/sqlitedeploy/internal/config"
 	"github.com/Khangdang1690/sqlitedeploy/internal/credentials"
-	"github.com/Khangdang1690/sqlitedeploy/internal/litestream"
 	"github.com/Khangdang1690/sqlitedeploy/internal/providers"
 	"github.com/Khangdang1690/sqlitedeploy/internal/sqlitex"
 )
 
 // NewInitCmd builds the `init` subcommand: bootstraps a primary node — creates
 // the local SQLite file in WAL mode, persists provider credentials, generates
-// a Litestream config, and prints a connection string.
+// an Ed25519 JWT keypair + replica token, and prints connection details.
 //
-// Two modes:
+// v2 ships sqld as the runtime. Apps connect via Hrana over HTTP (works from
+// edge runtimes — Cloudflare Workers, Lambda, Vercel) or via the local file.
+// Replicas authenticate to the primary's gRPC endpoint with the minted JWT.
+//
+// Two provider-credential modes:
 //
 //	Managed (default for r2): user has run `sqlitedeploy auth login`. The CLI
 //	  uses their stored Cloudflare token to list/create a bucket and generate
@@ -34,25 +38,28 @@ import (
 //	  This is the path for B2, generic S3, and CI/automated R2 setups.
 func NewInitCmd() *cobra.Command {
 	var (
-		providerKind string
-		bucket       string
-		accountID    string
-		region       string
-		endpoint     string
-		accessKey    string
-		secretKey    string
-		dbPath       string
-		replicaPath  string
+		providerKind   string
+		bucket         string
+		accountID      string
+		region         string
+		endpoint       string
+		accessKey      string
+		secretKey      string
+		dbPath         string
+		bucketPrefix   string
+		httpListenAddr string
+		grpcListenAddr string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Bootstrap the primary node: create the SQLite DB and provider config",
+		Short: "Bootstrap the primary node: create the SQLite DB, JWT keypair, and provider config",
 		Long: `Bootstrap a sqlitedeploy primary node.
 
 Creates ./data/app.db in WAL mode, writes ./.sqlitedeploy/config.yml with the
-provider credentials, generates ./.sqlitedeploy/litestream.yml, and prints the
-connection string your application can use.
+provider credentials, generates an Ed25519 JWT keypair under
+./.sqlitedeploy/auth/ (along with a long-lived replica token), and prints the
+connection details your application and replicas can use.
 
 Run this once on the node that owns writes. Other nodes use ` + "`sqlitedeploy attach`" + ` instead.
 
@@ -81,15 +88,26 @@ and --account-id to skip the Cloudflare API entirely.`,
 			if dbPath == "" {
 				dbPath = config.DefaultDBPath
 			}
-			if replicaPath == "" {
-				replicaPath = config.DefaultReplicaPath
+			if bucketPrefix == "" {
+				bucketPrefix = config.DefaultBucketPrefix
+			}
+			if httpListenAddr == "" {
+				httpListenAddr = config.DefaultHTTPListenAddr
+			}
+			if grpcListenAddr == "" {
+				grpcListenAddr = config.DefaultGRPCListenAddr
 			}
 
 			cfg := &config.Config{
-				Role:        config.RolePrimary,
-				DBPath:      dbPath,
-				Provider:    providers.ToConfig(prov),
-				ReplicaPath: replicaPath,
+				Role:              config.RolePrimary,
+				DBPath:            dbPath,
+				Provider:          providers.ToConfig(prov),
+				BucketPrefix:      bucketPrefix,
+				HTTPListenAddr:    httpListenAddr,
+				GRPCListenAddr:    grpcListenAddr,
+				AdminListenAddr:   config.DefaultAdminListenAddr,
+				JWTPublicKeyPath:  config.DefaultJWTPublicKeyPath,
+				JWTPrivateKeyPath: config.DefaultJWTPrivateKeyPath,
 			}
 
 			if err := sqlitex.InitDB(filepath.Join(dir, dbPath)); err != nil {
@@ -98,9 +116,10 @@ and --account-id to skip the Cloudflare API entirely.`,
 			if err := config.Save(dir, cfg); err != nil {
 				return err
 			}
-			lsPath, err := litestream.Render(dir, cfg)
+
+			authFiles, err := auth.BootstrapPrimary(dir, config.DirName)
 			if err != nil {
-				return err
+				return fmt.Errorf("bootstrap auth: %w", err)
 			}
 
 			absDB, _ := filepath.Abs(filepath.Join(dir, dbPath))
@@ -108,17 +127,26 @@ and --account-id to skip the Cloudflare API entirely.`,
 			fmt.Println("sqlitedeploy primary initialized")
 			fmt.Println()
 			fmt.Printf("  Database file:     %s\n", absDB)
-			fmt.Printf("  Connection (URI):  sqlite:///%s\n", filepath.ToSlash(absDB))
-			fmt.Printf("  Provider:          %s (bucket=%s, path=%s)\n", prov.Kind(), prov.Bucket(), replicaPath)
-			fmt.Printf("  Litestream config: %s\n", lsPath)
+			fmt.Printf("  Provider:          %s (bucket=%s, prefix=%s)\n", prov.Kind(), prov.Bucket(), bucketPrefix)
+			fmt.Println()
+			fmt.Println("  Endpoints (after `sqlitedeploy run`):")
+			fmt.Printf("    Hrana over HTTP:   http://%s   (apps + edge clients connect here)\n", httpListenAddr)
+			fmt.Printf("    gRPC for replicas: %s         (replica nodes attach here)\n", grpcListenAddr)
+			fmt.Printf("    Local file:        sqlite:///%s\n", filepath.ToSlash(absDB))
+			fmt.Println()
+			fmt.Println("  JWT auth (Ed25519):")
+			fmt.Printf("    Public key:        %s\n", authFiles.PublicKey)
+			fmt.Printf("    Private key:       %s\n", authFiles.PrivateKey)
+			fmt.Printf("    Replica token:     %s\n", authFiles.ReplicaToken)
 			fmt.Println()
 			fmt.Println("Next steps:")
-			fmt.Printf("  1. Start replication:    sqlitedeploy run -C %q\n", dir)
-			fmt.Println("  2. Connect from your app using the connection URI above.")
-			fmt.Printf("     Python: sqlite3.connect(%q)\n", absDB)
-			fmt.Printf("     Node:   new Database(%q)\n", absDB)
-			fmt.Printf("     Go:     sql.Open(\"sqlite3\", %q)\n", absDB)
-			fmt.Printf("     Java:   DriverManager.getConnection(\"jdbc:sqlite:%s\")\n", filepath.ToSlash(absDB))
+			fmt.Printf("  1. Start the server:     sqlitedeploy run -C %q\n", dir)
+			fmt.Println("  2. Connect from your app: use the Hrana URL above with @libsql/client")
+			fmt.Printf("     or open the local file directly: sqlite:///%s\n", filepath.ToSlash(absDB))
+			fmt.Println()
+			fmt.Println("  3. To attach a replica on another host:")
+			fmt.Printf("     - copy %s and %s to that host\n", authFiles.PublicKey, authFiles.ReplicaToken)
+			fmt.Println("     - run `sqlitedeploy attach --primary-grpc-url=http://<this-host>:5001 ...`")
 			fmt.Println()
 			return nil
 		},
@@ -133,7 +161,9 @@ and --account-id to skip the Cloudflare API entirely.`,
 	cmd.Flags().StringVar(&accessKey, "access-key", envOrDefault("SQLITEDEPLOY_ACCESS_KEY", ""), "access key (or env SQLITEDEPLOY_ACCESS_KEY) — supplying this triggers manual mode")
 	cmd.Flags().StringVar(&secretKey, "secret-key", envOrDefault("SQLITEDEPLOY_SECRET_KEY", ""), "secret key (or env SQLITEDEPLOY_SECRET_KEY)")
 	cmd.Flags().StringVar(&dbPath, "db-path", config.DefaultDBPath, "where to put the SQLite file (relative to project dir)")
-	cmd.Flags().StringVar(&replicaPath, "replica-path", config.DefaultReplicaPath, "sub-path within the bucket")
+	cmd.Flags().StringVar(&bucketPrefix, "bucket-prefix", config.DefaultBucketPrefix, "bottomless prefix within the bucket (lets multiple databases share one bucket)")
+	cmd.Flags().StringVar(&httpListenAddr, "http-listen-addr", config.DefaultHTTPListenAddr, "where sqld serves Hrana-over-HTTP for apps + edge clients")
+	cmd.Flags().StringVar(&grpcListenAddr, "grpc-listen-addr", config.DefaultGRPCListenAddr, "where sqld serves gRPC for replica nodes")
 	return cmd
 }
 
