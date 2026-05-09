@@ -130,6 +130,7 @@ build-sqld-target: fetch-libsql-source
 	src="$$(pwd)/$(LIBSQL_SRC_DIR)/target/$(RUST_TARGET)/release/sqld$$ext"; \
 	echo "→ building sqld for $(GO_OS)-$(GO_ARCH) ($(RUST_TARGET))" && \
 	cd $(LIBSQL_SRC_DIR) && \
+	rustup target add $(RUST_TARGET) && \
 	cargo build --release -p libsql-server --bin sqld --target $(RUST_TARGET) && \
 	cp "$$src" "$$out" && \
 	chmod +x "$$out" && \
