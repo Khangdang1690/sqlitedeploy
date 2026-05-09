@@ -1,8 +1,8 @@
 """Locate the bundled sqlitedeploy binary and exec it with the user's args.
 
-The Go CLI reads <cwd>/.sqlitedeploy/config.yml and <cwd>/data/app.db, so we
-must not chdir. On POSIX we use os.execvp to replace the Python process so
-signals (Ctrl-C while `sqlitedeploy run` is serving) reach sqld directly.
+The Go CLI reads <cwd>/.sqlitedeploy/config.yml and <cwd>/.sqlitedeploy/db.sqlite,
+so we must not chdir. On POSIX we use os.execvp to replace the Python process
+so signals (Ctrl-C while `sqlitedeploy up` is serving) reach sqld directly.
 Windows is unsupported (sqld doesn't compile there) — use WSL2.
 """
 

@@ -93,7 +93,8 @@ Plus the same bucket credentials the primary uses, for the cold-start seed.`,
 			}
 
 			absDBPath := absDB(dir, cfg.DBPath)
-			if err := os.MkdirAll(filepath.Dir(absDBPath), 0o755); err != nil {
+			// sqld treats DBPath as a directory it owns; create the dir itself.
+			if err := os.MkdirAll(absDBPath, 0o755); err != nil {
 				return err
 			}
 
@@ -207,7 +208,7 @@ func loadOrInitReplicaConfig(dir string, in *replicaInputs) (*config.Config, boo
 		PrimaryHranaURL:  in.primaryHTTPURL,
 		JWTPublicKeyPath: config.DefaultJWTPublicKeyPath,
 	}
-	if err := os.MkdirAll(filepath.Dir(absDB(dir, cfg.DBPath)), 0o755); err != nil {
+	if err := os.MkdirAll(absDB(dir, cfg.DBPath), 0o755); err != nil {
 		return nil, false, err
 	}
 	if err := config.Save(dir, cfg); err != nil {
@@ -217,7 +218,3 @@ func loadOrInitReplicaConfig(dir string, in *replicaInputs) (*config.Config, boo
 	return cfg, true, nil
 }
 
-func absDB(projectDir, dbPath string) string {
-	abs, _ := filepath.Abs(filepath.Join(projectDir, dbPath))
-	return abs
-}

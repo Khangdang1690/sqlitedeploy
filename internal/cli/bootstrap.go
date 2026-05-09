@@ -9,170 +9,23 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/spf13/cobra"
-
-	"github.com/Khangdang1690/sqlitedeploy/internal/auth"
 	"github.com/Khangdang1690/sqlitedeploy/internal/cloudflare"
-	"github.com/Khangdang1690/sqlitedeploy/internal/config"
 	"github.com/Khangdang1690/sqlitedeploy/internal/credentials"
 	"github.com/Khangdang1690/sqlitedeploy/internal/providers"
-	"github.com/Khangdang1690/sqlitedeploy/internal/sqlitex"
 )
 
-// NewInitCmd builds the `init` subcommand: bootstraps a primary node — creates
-// the local SQLite file in WAL mode, persists provider credentials, generates
-// an Ed25519 JWT keypair + replica token, and prints connection details.
-//
-// v2 ships sqld as the runtime. Apps connect via Hrana over HTTP (works from
-// edge runtimes — Cloudflare Workers, Lambda, Vercel) or via the local file.
-// Replicas authenticate to the primary's gRPC endpoint with the minted JWT.
-//
-// Two provider-credential modes:
-//
-//	Managed (default for r2): user has run `sqlitedeploy auth login`. The CLI
-//	  uses their stored Cloudflare token to list/create a bucket and generate
-//	  a per-bucket R2 access key automatically.
-//
-//	Manual: any of --access-key / --secret-key / --account-id supplied. The
-//	  CLI takes those values verbatim and skips the Cloudflare API entirely.
-//	  This is the path for B2, generic S3, and CI/automated R2 setups.
-func NewInitCmd() *cobra.Command {
-	var (
-		providerKind   string
-		bucket         string
-		accountID      string
-		region         string
-		endpoint       string
-		accessKey      string
-		secretKey      string
-		dbPath         string
-		bucketPrefix   string
-		httpListenAddr string
-		grpcListenAddr string
-	)
-
-	cmd := &cobra.Command{
-		Use:   "init",
-		Short: "Bootstrap the primary node: create the SQLite DB, JWT keypair, and provider config",
-		Long: `Bootstrap a sqlitedeploy primary node.
-
-Creates ./data/app.db in WAL mode, writes ./.sqlitedeploy/config.yml with the
-provider credentials, generates an Ed25519 JWT keypair under
-./.sqlitedeploy/auth/ (along with a long-lived replica token), and prints the
-connection details your application and replicas can use.
-
-Run this once on the node that owns writes. Other nodes use ` + "`sqlitedeploy attach`" + ` instead.
-
-For Cloudflare R2: run ` + "`sqlitedeploy auth login`" + ` first; the CLI will then create
-the bucket and a scoped access key for you. Or supply --access-key, --secret-key,
-and --account-id to skip the Cloudflare API entirely.`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			dir, err := projectDir(cmd)
-			if err != nil {
-				return err
-			}
-
-			if _, err := os.Stat(config.Path(dir)); err == nil {
-				return fmt.Errorf("config already exists at %s — refusing to overwrite. Run `sqlitedeploy destroy` first or pick a different --project-dir", config.Path(dir))
-			}
-
-			prov, err := buildProvider(dir, providerInputs{
-				kindStr: providerKind, bucket: bucket, accountID: accountID,
-				region: region, endpoint: endpoint,
-				accessKey: accessKey, secretKey: secretKey,
-			})
-			if err != nil {
-				return err
-			}
-
-			if dbPath == "" {
-				dbPath = config.DefaultDBPath
-			}
-			if bucketPrefix == "" {
-				bucketPrefix = config.DefaultBucketPrefix
-			}
-			if httpListenAddr == "" {
-				httpListenAddr = config.DefaultHTTPListenAddr
-			}
-			if grpcListenAddr == "" {
-				grpcListenAddr = config.DefaultGRPCListenAddr
-			}
-
-			cfg := &config.Config{
-				Role:              config.RolePrimary,
-				DBPath:            dbPath,
-				Provider:          providers.ToConfig(prov),
-				BucketPrefix:      bucketPrefix,
-				HTTPListenAddr:    httpListenAddr,
-				GRPCListenAddr:    grpcListenAddr,
-				AdminListenAddr:   config.DefaultAdminListenAddr,
-				JWTPublicKeyPath:  config.DefaultJWTPublicKeyPath,
-				JWTPrivateKeyPath: config.DefaultJWTPrivateKeyPath,
-			}
-
-			if err := sqlitex.InitDB(filepath.Join(dir, dbPath)); err != nil {
-				return fmt.Errorf("init sqlite: %w", err)
-			}
-			if err := config.Save(dir, cfg); err != nil {
-				return err
-			}
-
-			authFiles, err := auth.BootstrapPrimary(dir, config.DirName)
-			if err != nil {
-				return fmt.Errorf("bootstrap auth: %w", err)
-			}
-
-			absDB, _ := filepath.Abs(filepath.Join(dir, dbPath))
-			fmt.Println()
-			fmt.Println("sqlitedeploy primary initialized")
-			fmt.Println()
-			fmt.Printf("  Database file:     %s\n", absDB)
-			fmt.Printf("  Provider:          %s (bucket=%s, prefix=%s)\n", prov.Kind(), prov.Bucket(), bucketPrefix)
-			fmt.Println()
-			fmt.Println("  Endpoints (after `sqlitedeploy run`):")
-			fmt.Printf("    Hrana over HTTP:   http://%s   (apps + edge clients connect here)\n", httpListenAddr)
-			fmt.Printf("    gRPC for replicas: %s         (replica nodes attach here)\n", grpcListenAddr)
-			fmt.Printf("    Local file:        sqlite:///%s\n", filepath.ToSlash(absDB))
-			fmt.Println()
-			fmt.Println("  JWT auth (Ed25519):")
-			fmt.Printf("    Public key:        %s\n", authFiles.PublicKey)
-			fmt.Printf("    Private key:       %s\n", authFiles.PrivateKey)
-			fmt.Printf("    Replica token:     %s\n", authFiles.ReplicaToken)
-			fmt.Println()
-			fmt.Println("Next steps:")
-			fmt.Printf("  1. Start the server:     sqlitedeploy run -C %q\n", dir)
-			fmt.Println("  2. Connect from your app: use the Hrana URL above with @libsql/client")
-			fmt.Printf("     or open the local file directly: sqlite:///%s\n", filepath.ToSlash(absDB))
-			fmt.Println()
-			fmt.Println("  3. To attach a replica on another host:")
-			fmt.Printf("     - copy %s and %s to that host\n", authFiles.PublicKey, authFiles.ReplicaToken)
-			fmt.Println("     - run `sqlitedeploy attach --primary-grpc-url=http://<this-host>:5001 ...`")
-			fmt.Println()
-			return nil
-		},
-	}
-
-	addProjectDirFlag(cmd)
-	cmd.Flags().StringVar(&providerKind, "provider", "r2", "object storage provider: r2 | b2 | s3")
-	cmd.Flags().StringVar(&bucket, "bucket", "", "bucket name (managed-mode: optional, defaults derived from project dir)")
-	cmd.Flags().StringVar(&accountID, "account-id", "", "Cloudflare R2 account ID (manual mode only)")
-	cmd.Flags().StringVar(&region, "region", "", "bucket region (B2/S3)")
-	cmd.Flags().StringVar(&endpoint, "endpoint", "", "S3 endpoint override (S3 only; e.g. for MinIO)")
-	cmd.Flags().StringVar(&accessKey, "access-key", envOrDefault("SQLITEDEPLOY_ACCESS_KEY", ""), "access key (or env SQLITEDEPLOY_ACCESS_KEY) — supplying this triggers manual mode")
-	cmd.Flags().StringVar(&secretKey, "secret-key", envOrDefault("SQLITEDEPLOY_SECRET_KEY", ""), "secret key (or env SQLITEDEPLOY_SECRET_KEY)")
-	cmd.Flags().StringVar(&dbPath, "db-path", config.DefaultDBPath, "where to put the SQLite file (relative to project dir)")
-	cmd.Flags().StringVar(&bucketPrefix, "bucket-prefix", config.DefaultBucketPrefix, "bottomless prefix within the bucket (lets multiple databases share one bucket)")
-	cmd.Flags().StringVar(&httpListenAddr, "http-listen-addr", config.DefaultHTTPListenAddr, "where sqld serves Hrana-over-HTTP for apps + edge clients")
-	cmd.Flags().StringVar(&grpcListenAddr, "grpc-listen-addr", config.DefaultGRPCListenAddr, "where sqld serves gRPC for replica nodes")
-	return cmd
-}
-
+// providerInputs is the user-supplied raw flags routed to either the managed
+// (Cloudflare-onboarded) or manual provider construction paths.
 type providerInputs struct {
 	kindStr, bucket, accountID, region, endpoint, accessKey, secretKey string
+	// forceManual skips the managed flow even when no creds are given. Set by
+	// `up --byo-storage` for users who want the old prompt-for-creds UX.
+	forceManual bool
 }
 
 // buildProvider routes between the managed and manual flows. Managed kicks in
-// only for R2 when none of access-key / secret-key / account-id were supplied.
+// only for R2 when none of access-key / secret-key / account-id were supplied
+// and forceManual isn't set.
 func buildProvider(projectDir string, in providerInputs) (providers.Provider, error) {
 	kind, err := providers.ParseKind(in.kindStr)
 	if err != nil {
@@ -180,7 +33,7 @@ func buildProvider(projectDir string, in providerInputs) (providers.Provider, er
 	}
 
 	manualR2 := in.accessKey != "" || in.secretKey != "" || in.accountID != ""
-	if kind == providers.KindR2 && !manualR2 {
+	if kind == providers.KindR2 && !manualR2 && !in.forceManual {
 		return buildR2Managed(projectDir, in.bucket)
 	}
 	return buildProviderManual(kind, in)
@@ -205,7 +58,6 @@ func buildR2Managed(projectDir, bucketFlag string) (providers.Provider, error) {
 	ctx := context.Background()
 	cf := cloudflare.New(creds.APIToken)
 
-	// 1. Resolve account: use cached one, or list and pick.
 	accountID, accountName := creds.AccountID, creds.AccountName
 	if accountID == "" {
 		accts, err := cf.ListAccounts(ctx)
@@ -223,7 +75,6 @@ func buildR2Managed(projectDir, bucketFlag string) (providers.Provider, error) {
 	}
 	fmt.Printf("Using Cloudflare account: %s\n", accountName)
 
-	// 2. Resolve bucket: list, then either pick existing, use --bucket, or create new.
 	existing, err := cf.ListBuckets(ctx, accountID)
 	if err != nil {
 		if errors.Is(err, cloudflare.ErrR2NotEnabled) {
@@ -239,7 +90,6 @@ func buildR2Managed(projectDir, bucketFlag string) (providers.Provider, error) {
 		return nil, err
 	}
 
-	// 3. Create a scoped R2 API token for this bucket.
 	hostname, _ := os.Hostname()
 	tokenName := fmt.Sprintf("sqlitedeploy-%s-%s", bucketName, sanitizeForToken(hostname))
 	fmt.Printf("Creating scoped R2 access key (%s)...\n", tokenName)
@@ -260,19 +110,15 @@ func r2NotEnabledMessage(accountID string) error {
 	return fmt.Errorf(
 		"R2 isn't enabled on this Cloudflare account yet.\n"+
 			"\n"+
-			"Cloudflare requires a one-time activation (free; the 10 GB free tier means\n"+
-			"no charges unless you exceed it). To enable:\n"+
+			"Cloudflare requires a one-time activation (free; the 10 GB free tier\n"+
+			"means no charges unless you exceed it). To enable:\n"+
 			"\n"+
 			"  1. Open: %s\n"+
 			"  2. Click `Purchase R2 Plan` and accept the terms.\n"+
-			"  3. Re-run `sqlitedeploy init`.",
+			"  3. Re-run `sqlitedeploy up`.",
 		url)
 }
 
-// chooseBucket implements the bucket selection rules:
-//
-//	bucketFlag != "":     use it; create if not in existing.
-//	bucketFlag == "":     show menu of existing + "create new" option.
 func chooseBucket(ctx context.Context, cf *cloudflare.Client, accountID, projectDir, bucketFlag string, existing []cloudflare.Bucket) (string, error) {
 	if bucketFlag != "" {
 		for _, b := range existing {
@@ -326,9 +172,6 @@ func chooseBucket(ctx context.Context, cf *cloudflare.Client, accountID, project
 	return name, nil
 }
 
-// promptValidBucketName loops until the user types a name that passes the R2
-// naming rules (or hits enter to accept the default). Re-prompting locally is
-// much friendlier than letting Cloudflare reject and forcing a full re-run.
 func promptValidBucketName(defaultName string) (string, error) {
 	for {
 		raw, err := promptString("New bucket name", defaultName)
@@ -349,11 +192,7 @@ func promptValidBucketName(defaultName string) (string, error) {
 }
 
 // validateBucketName returns "" when name is a valid R2 bucket name, or a
-// short human reason otherwise. Rules cribbed from Cloudflare's R2 docs and
-// the matching S3 conventions:
-//   - length 3-63 chars
-//   - only lowercase a-z, digits 0-9, and hyphens
-//   - must start and end with a letter or digit (no leading/trailing hyphen)
+// short human reason otherwise.
 func validateBucketName(name string) string {
 	if n := len(name); n < 3 || n > 63 {
 		return "must be 3-63 characters"
@@ -398,8 +237,6 @@ func pickAccount(accts []cloudflare.Account) (cloudflare.Account, error) {
 	return accts[idx-1], nil
 }
 
-// defaultBucketName derives "sqlitedeploy-<projectdir-basename>" sanitized for
-// R2's bucket naming rules (lowercase, dashes only, 3-63 chars).
 func defaultBucketName(projectDir string) string {
 	base := filepath.Base(projectDir)
 	base = strings.ToLower(base)
@@ -420,8 +257,6 @@ func defaultBucketName(projectDir string) string {
 	return strings.Trim(name, "-")
 }
 
-// sanitizeForToken cleans up a hostname so it's safe to embed in a Cloudflare
-// token name (printable, dash-separated).
 func sanitizeForToken(s string) string {
 	s = strings.ToLower(s)
 	out := make([]byte, 0, len(s))
@@ -440,7 +275,7 @@ func sanitizeForToken(s string) string {
 	return string(out)
 }
 
-// buildProviderManual is the old explicit-flags path: prompts for any missing
+// buildProviderManual is the explicit-flags path: prompts for any missing
 // values and constructs the right Provider. Used by B2, generic S3, and any
 // R2 flow that supplied at least one of access-key / secret-key / account-id.
 func buildProviderManual(kind providers.Kind, in providerInputs) (providers.Provider, error) {

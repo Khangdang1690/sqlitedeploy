@@ -34,3 +34,11 @@ func (c *Client) CreateBucket(ctx context.Context, accountID, name string) (Buck
 	body := map[string]string{"name": name}
 	return do[Bucket](ctx, c, "POST", fmt.Sprintf("/accounts/%s/r2/buckets", accountID), body)
 }
+
+// DeleteBucket removes an R2 bucket. The bucket must be empty; Cloudflare
+// returns 10004 ("bucket not empty") otherwise. Callers should surface a
+// dashboard URL for manual cleanup in that case.
+func (c *Client) DeleteBucket(ctx context.Context, accountID, name string) error {
+	_, err := do[struct{}](ctx, c, "DELETE", fmt.Sprintf("/accounts/%s/r2/buckets/%s", accountID, name), nil)
+	return err
+}

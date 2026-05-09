@@ -60,7 +60,7 @@ Required token permissions:
   - User / API Tokens / Edit              (so we can create per-bucket scoped tokens)
 
 The pasted token is stored at the path printed below with mode 0600.
-Subsequent ` + "`sqlitedeploy init`" + ` commands reuse it across projects.`,
+Subsequent ` + "`sqlitedeploy up`" + ` commands reuse it across projects.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			deeplink := tokenCreateURL()
 
@@ -146,7 +146,7 @@ Subsequent ` + "`sqlitedeploy init`" + ` commands reuse it across projects.`,
 			fmt.Printf("Authenticated as %s (account id: %s)\n", selected.Name, selected.ID)
 			fmt.Printf("Saved to %s\n", path)
 			fmt.Println()
-			fmt.Println("Next: run `sqlitedeploy init` in any project to create a bucket and connect.")
+			fmt.Println("Next: run `sqlitedeploy up` in any project to bring SQLite live.")
 			return nil
 		},
 	}

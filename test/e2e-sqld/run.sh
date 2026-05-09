@@ -2,11 +2,11 @@
 # E2E smoke test for sqlitedeploy v2 (sqld + bottomless to MinIO).
 #
 # Validates:
-#   1. `sqlitedeploy init` bootstraps a primary against an S3-compatible bucket.
-#   2. `sqlitedeploy run` starts sqld with bottomless replication.
-#   3. Writes via stock sqlite3 driver land in the local DB.
-#   4. Hrana HTTP endpoint serves the same data to remote clients.
-#   5. (TODO Phase 6.5) replica node streams from primary and sees the data.
+#   1. `sqlitedeploy up --byo-storage --no-tunnel` bootstraps + runs against
+#      an S3-compatible bucket without touching Cloudflare.
+#   2. Writes via stock sqlite3 driver land in the local DB.
+#   3. Hrana HTTP endpoint serves the same data to remote clients.
+#   4. (TODO Phase 6.5) replica node streams from primary and sees the data.
 #
 # Prereqs: docker, docker compose, curl, sqlite3, jq, the sqlitedeploy binary
 # at $SQLITEDEPLOY (defaults to ./dist/sqlitedeploy from `make build`).
@@ -53,9 +53,11 @@ echo "== 1. starting MinIO + bucket-init =="
 docker compose -f "$HERE/docker-compose.yml" up -d --wait
 trap 'cleanup' EXIT
 
-echo "== 2. sqlitedeploy init (primary against MinIO) =="
+echo "== 2. sqlitedeploy up --byo-storage --no-tunnel (against MinIO, in background) =="
 cd "$WORK"
-"$SQLITEDEPLOY" init \
+"$SQLITEDEPLOY" up \
+  --byo-storage \
+  --no-tunnel \
   --provider s3 \
   --bucket sqlitedeploy-e2e \
   --region us-east-1 \
@@ -64,15 +66,8 @@ cd "$WORK"
   --secret-key sqlitedeploytestsecret \
   --http-listen-addr 127.0.0.1:18080 \
   --grpc-listen-addr 127.0.0.1:15001 \
-  --bucket-prefix e2e
-
-test -f "$WORK/data/app.db"
-test -f "$WORK/.sqlitedeploy/auth/jwt_public.pem"
-test -f "$WORK/.sqlitedeploy/auth/jwt_private.pem"
-test -f "$WORK/.sqlitedeploy/auth/replica.jwt"
-
-echo "== 3. sqlitedeploy run (background) =="
-"$SQLITEDEPLOY" run >"$WORK/sqld.log" 2>&1 &
+  --bucket-prefix e2e \
+  >"$WORK/sqld.log" 2>&1 &
 SQLD_PID=$!
 
 # Wait for Hrana HTTP to come up (up to 15s).
@@ -86,11 +81,16 @@ if ! curl -fsS http://127.0.0.1:18080/health >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "== 4. write via stock sqlite3 driver =="
-sqlite3 "$WORK/data/app.db" "CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, label TEXT);"
-sqlite3 "$WORK/data/app.db" "INSERT INTO items (label) VALUES ('hello-from-stock-driver');"
+test -f "$WORK/.sqlitedeploy/db.sqlite"
+test -f "$WORK/.sqlitedeploy/auth/jwt_public.pem"
+test -f "$WORK/.sqlitedeploy/auth/jwt_private.pem"
+test -f "$WORK/.sqlitedeploy/auth/replica.jwt"
 
-echo "== 5. read via Hrana HTTP =="
+echo "== 3. write via stock sqlite3 driver =="
+sqlite3 "$WORK/.sqlitedeploy/db.sqlite" "CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, label TEXT);"
+sqlite3 "$WORK/.sqlitedeploy/db.sqlite" "INSERT INTO items (label) VALUES ('hello-from-stock-driver');"
+
+echo "== 4. read via Hrana HTTP =="
 TOKEN="$(cat "$WORK/.sqlitedeploy/auth/replica.jwt")"
 RESP="$(curl -fsS \
   -H "Authorization: Bearer $TOKEN" \
@@ -109,8 +109,7 @@ fi
 
 echo
 echo "✓ E2E smoke test passed"
-echo "  - init produced primary config + JWT keypair"
-echo "  - sqld started and Hrana HTTP came up"
+echo "  - up bootstrapped the primary, started sqld, and Hrana HTTP came up"
 echo "  - stock sqlite3 write was readable via Hrana with the replica JWT"
 echo
 echo "Phase 6.5 (TODO): spin up a replica with --primary-grpc-url, verify"

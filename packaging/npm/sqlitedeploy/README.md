@@ -28,15 +28,14 @@ the resolver will tell you what to do.
 
 ```bash
 npx sqlitedeploy auth login    # one-time Cloudflare R2 setup
-npx sqlitedeploy init          # creates ./data/app.db + ./.sqlitedeploy/
-npx sqlitedeploy run           # foreground replication loop
+npx sqlitedeploy up            # provisions storage + tunnel + starts sqld
 ```
 
 Then connect from your app:
 
 ```js
 const Database = require('better-sqlite3');
-const db = new Database('./data/app.db');
+const db = new Database('./.sqlitedeploy/db.sqlite');
 ```
 
 ## Supported platforms

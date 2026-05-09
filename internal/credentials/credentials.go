@@ -1,6 +1,6 @@
 // Package credentials manages sqlitedeploy's machine-level credential file —
 // the place where `sqlitedeploy auth login` stores the user's Cloudflare API
-// token so subsequent `sqlitedeploy init` commands can use it without
+// token so subsequent `sqlitedeploy up` commands can use it without
 // re-prompting.
 //
 // File location:

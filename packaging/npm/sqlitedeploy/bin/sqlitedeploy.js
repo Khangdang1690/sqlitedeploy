@@ -2,7 +2,7 @@
 // Resolver shim: locates the platform-specific sqlitedeploy binary that npm
 // installed via optionalDependencies, then execs it with the user's args.
 // CWD must be preserved — the Go CLI reads <cwd>/.sqlitedeploy/config.yml
-// and <cwd>/data/app.db, so we must not chdir here.
+// and <cwd>/.sqlitedeploy/db.sqlite, so we must not chdir here.
 
 'use strict';
 

@@ -1,18 +1,17 @@
 // Minimal Next.js / TypeScript usage.
 //
 // Workflow:
-//   npm i               # installs sqlitedeploy + better-sqlite3
+//   npm i                          # installs sqlitedeploy + better-sqlite3
 //   npx sqlitedeploy auth login
-//   npx sqlitedeploy init    # creates ./data/app.db
-//   npx sqlitedeploy run &   # background replication daemon
-//   node app.js              # your application reads/writes the file
+//   npx sqlitedeploy up            # provisions storage + tunnel + sqld
+//   node app.js                    # your application reads/writes the file
 //
 // In a real Next.js app you'd open the connection inside a route handler
-// (or a server-side singleton) — the path is just `./data/app.db`.
+// (or a server-side singleton) — the path is just `./.sqlitedeploy/db.sqlite`.
 
 const Database = require('better-sqlite3');
 
-const db = new Database('./data/app.db');
+const db = new Database('./.sqlitedeploy/db.sqlite');
 db.pragma('journal_mode = WAL'); // sqlitedeploy already set this; harmless to confirm
 
 db.exec('CREATE TABLE IF NOT EXISTS visits (ts TEXT NOT NULL)');
