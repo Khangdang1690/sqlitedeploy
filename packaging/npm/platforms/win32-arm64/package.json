@@ -1,6 +1,6 @@
 {
   "name": "@weirdvl/win32-arm64",
-  "version": "0.0.0",
+  "version": "0.5.1",
   "description": "sqlitedeploy CLI binary for win32-arm64. Installed automatically by the `sqlitedeploy` package.",
   "license": "Apache-2.0",
   "homepage": "https://github.com/Khangdang1690/sqlitedeploy",
