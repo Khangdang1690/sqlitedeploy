@@ -151,7 +151,7 @@ release:
 		out="$(BUILD_DIR)/$(BIN_NAME)-$$os-$$goarch$$ext"; \
 		echo "→ building $$out (version=$(VERSION))"; \
 		GOOS=$$os GOARCH=$$goarch go build \
-			-ldflags="-s -w -X main.version=$(VERSION)" \
+			-ldflags="-s -w -X main.version=$(VERSION) -X github.com/Khangdang1690/sqlitedeploy/internal/sqld.downloadVersion=$(VERSION)" \
 			-o "$$out" ./cmd/sqlitedeploy; \
 	done
 	@ls -lh $(BUILD_DIR)

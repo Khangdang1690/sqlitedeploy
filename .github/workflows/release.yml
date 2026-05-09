@@ -249,14 +249,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: download binaries
+      - name: download sqlitedeploy binaries
         uses: actions/download-artifact@v4
         with:
           name: binaries
           path: dist/
 
+      # Also attach the standalone sqld binaries so the runtime download
+      # fallback in internal/sqld/embed.go can fetch them when a `go install`
+      # produces a CLI with placeholder embeds. See issue #5.
+      - name: download standalone sqld artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: sqld-*
+          path: sqld-bin/
+          merge-multiple: true
+
       - name: create release with binaries
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: |
+            dist/*
+            sqld-bin/sqld-*
           generate_release_notes: true
