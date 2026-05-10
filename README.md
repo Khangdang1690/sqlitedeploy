@@ -169,7 +169,7 @@ Ctrl-C to stop · re-run `sqlitedeploy up` to resume · `sqlitedeploy down` to t
 
 The first run downloads `cloudflared` (~30 MB, cached); subsequent runs skip that.
 
-> **Stable hostnames.** Quick tunnels are ephemeral (the `*.trycloudflare.com` URL changes between runs). For production with a custom domain, pass `--tunnel=named --hostname=db.example.com` (requires the domain on Cloudflare). For "expose-on-localhost-only" behavior, pass `--no-tunnel`.
+> **Stable hostnames.** Quick tunnels are ephemeral (the `*.trycloudflare.com` URL changes between runs). For production with a custom domain, the simplest path is `--ingress=listen --public-url=https://db.example.com` and let your platform's HTTPS (Fly auto-TLS, Render, your own Caddy, etc.) handle it — see the "Pick your cloud" section above. For "bind localhost-only behind your own reverse proxy" behavior, pass `--ingress=listen --http-listen-addr=127.0.0.1:8080`.
 
 ### 5. Connect from your app
 
@@ -245,10 +245,71 @@ First attach cold-starts from the bucket via bottomless, then keeps streaming WA
 
 Run any command with `--help` for full flags.
 
+## Pick your cloud
+
+`sqlitedeploy up` separates two decisions: where your **bucket** lives (durable backup) and how clients reach the **primary** (public URL). Mix and match — they're independent.
+
+### Storage: bring your own bucket on any cloud
+
+The default zero-config path uses Cloudflare R2 (10 GB free, $0 egress). For everything else, pass `--byo-storage --provider=<kind>` plus an access key. The same `s3` driver works with **any S3-compatible service**: AWS S3, Backblaze B2, Tigris, Wasabi, MinIO, DigitalOcean Spaces, Linode Object Storage, Scaleway, your self-hosted MinIO, even R2 with a hand-rolled token.
+
+| Provider                       | Flag                                               |
+| ------------------------------ | -------------------------------------------------- |
+| Cloudflare R2 (managed, default) | (no flags — uses `auth login` creds)             |
+| Cloudflare R2 (BYO token)      | `--provider=r2 --byo-storage --account-id=…`       |
+| Backblaze B2                   | `--provider=b2 --region=us-west-002`                |
+| AWS S3 / DO Spaces / MinIO / … | `--provider=s3 --endpoint=… --region=…`             |
+
+`--access-key` / `--secret-key` (or env `SQLITEDEPLOY_ACCESS_KEY` / `SQLITEDEPLOY_SECRET_KEY`) work for all four.
+
+### Ingress: tunnel, or your platform's own HTTPS
+
+| Mode                             | When to use                                                                          |
+| -------------------------------- | ------------------------------------------------------------------------------------ |
+| `--ingress=tunnel` (default)     | Anywhere with outbound HTTPS — laptop, home server, container with no public IP. Free `*.trycloudflare.com` URL. |
+| `--ingress=listen`               | Production on Fly / Render / Railway / Cloud Run / ECS / Kubernetes / your own VPS — your platform already terminates TLS. |
+
+In `listen` mode, sqld auto-binds `0.0.0.0:8080` (override with `--http-listen-addr`). Pass `--public-url=https://db.example.com` so the success banner echoes the URL clients will actually use.
+
+### Deploy recipes
+
+**Fly.io** (uses Fly's auto-TLS + persistent volume):
+
+```bash
+sqlitedeploy up \
+  --ingress=listen \
+  --public-url=https://$FLY_APP_NAME.fly.dev \
+  --byo-storage --provider=s3 \
+  --endpoint=https://s3.us-east-1.amazonaws.com --region=us-east-1 \
+  --bucket=$BUCKET --access-key=$AWS_ACCESS_KEY_ID --secret-key=$AWS_SECRET_ACCESS_KEY
+```
+
+Make sure your `fly.toml` mounts a volume at `.sqlitedeploy/` and exposes port 8080.
+
+**Render / Railway / Koyeb** (auto-TLS on the platform's `*.onrender.com` / `*.railway.app` domain):
+
+```bash
+sqlitedeploy up \
+  --ingress=listen --public-url=https://$RENDER_EXTERNAL_HOSTNAME \
+  --byo-storage --provider=s3 --endpoint=… --bucket=… --access-key=… --secret-key=…
+```
+
+Set the platform's persistent disk mount point to your project's `.sqlitedeploy/` directory.
+
+**Cloud Run / ECS / GKE / your own VPS** (you bring TLS):
+
+```bash
+sqlitedeploy up --ingress=listen --byo-storage --provider=s3 --bucket=… …
+```
+
+Without `--public-url` the banner just says "Listening on 0.0.0.0:8080 — point your platform's ingress here." Wire your load balancer / Caddy / nginx / Cloudflare Tunnel front-door at port 8080 and you're done.
+
+> **Replicas need TCP for gRPC.** If you're attaching read replicas, the primary's port `5001` (gRPC) needs to be reachable too. On Fly that's a second `[[services]]` block in `fly.toml`; on AWS that's an NLB; everywhere else it's whatever your platform calls "raw TCP ingress."
+
 ## Honest limitations
 
 * **Single-writer only.** Sqld doesn't fix this — SQLite is single-writer at the file level. If you need multiple writers, use [LiteFS](https://fly.io/docs/litefs/), [rqlite](https://rqlite.io/), or [Turso's managed product](https://turso.tech/).
-* **Primary must be network-reachable.** Edge clients (Workers, Lambda) connect over HTTP, so the primary needs a public endpoint. The default `up` flow gets you that for free via Cloudflare Tunnel; for production with a custom domain pass `--tunnel=named` or run your own reverse proxy.
+* **Primary must be network-reachable.** Edge clients (Workers, Lambda) connect over HTTP, so the primary needs a public endpoint. The default `up` flow gets you that for free via Cloudflare Tunnel; for production on Fly/Render/Cloud Run/your VPS use `--ingress=listen --public-url=…` so your platform's existing HTTPS handles it.
 * **JWT keys to manage.** v2 uses Ed25519 JWTs for auth. Lose the private key on the primary and you can't mint new replica tokens. The keypair lives at `.sqlitedeploy/auth/` — back it up or commit to a sealed secrets store.
 * **Async durability.** Writes are flushed to object storage by bottomless on a periodic schedule. The last few seconds of writes can be lost on a primary crash before the backup ships.
 * **Free-tier ceilings.** R2/B2 free tiers cap at 10 GB. Watch your provider's dashboard.

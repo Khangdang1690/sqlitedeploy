@@ -15,9 +15,9 @@ import (
 
 	"github.com/Khangdang1690/sqlitedeploy/internal/auth"
 	"github.com/Khangdang1690/sqlitedeploy/internal/config"
+	"github.com/Khangdang1690/sqlitedeploy/internal/ingress"
 	"github.com/Khangdang1690/sqlitedeploy/internal/providers"
 	"github.com/Khangdang1690/sqlitedeploy/internal/sqld"
-	"github.com/Khangdang1690/sqlitedeploy/internal/tunnel"
 )
 
 // NewUpCmd builds the `up` subcommand: the headline free-tier command.
@@ -43,7 +43,9 @@ func NewUpCmd() *cobra.Command {
 		bucketPrefix   string
 		httpListenAddr string
 		grpcListenAddr string
-		noTunnel       bool
+		ingressMode    string
+		publicURL      string
+		noTunnel       bool // deprecated alias for --ingress=listen; kept for backwards compat
 		byoStorage     bool
 	)
 	cmd := &cobra.Command{
@@ -61,13 +63,38 @@ First run:
 
 Subsequent runs reuse the existing config and just resume the stack.
 
-Pass --no-tunnel for the old localhost-only behavior (you supply the public
-URL via your own reverse proxy). Pass --byo-storage to skip the managed R2
-flow and supply --access-key / --secret-key / --account-id manually.`,
+Pass --ingress=listen to bind sqld on a public port and let your platform's
+own HTTPS ingress (Fly auto-TLS, Render, Railway, Cloud Run, your VPS, etc.)
+handle the public URL — combine with --public-url=<your-domain> so the
+success banner shows the URL clients will actually use. Pass --byo-storage
+plus --provider=s3 / b2 / r2 with --access-key / --secret-key / --endpoint
+to point at any S3-compatible bucket on any cloud (AWS S3, Backblaze B2,
+Tigris, Wasabi, MinIO, your own R2 token).`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dir, err := projectDir(cmd)
 			if err != nil {
 				return err
+			}
+
+			// Resolve ingress mode (with legacy --no-tunnel deprecation handling).
+			mode := ingress.Mode(ingressMode)
+			if noTunnel {
+				fmt.Fprintln(os.Stderr, "warning: --no-tunnel is deprecated; use --ingress=listen instead")
+				mode = ingress.ModeListen
+			}
+			switch mode {
+			case ingress.ModeTunnel, ingress.ModeListen:
+			default:
+				return fmt.Errorf("unknown ingress mode %q (valid: tunnel, listen)", ingressMode)
+			}
+
+			// Listen mode needs a non-loopback bind so the platform's ingress
+			// can reach sqld. Auto-promote when the user hasn't overridden
+			// --http-listen-addr.
+			userOverrodeBind := cmd.Flags().Changed("http-listen-addr")
+			if mode == ingress.ModeListen && !userOverrodeBind && httpListenAddr == config.DefaultHTTPListenAddr {
+				httpListenAddr = "0.0.0.0:8080"
+				fmt.Fprintln(os.Stderr, "note: --ingress=listen — binding sqld on 0.0.0.0:8080 so your platform's ingress can reach it")
 			}
 
 			cfg, isFirstRun, err := loadOrBootstrapPrimary(dir, providerInputs{
@@ -82,6 +109,13 @@ flow and supply --access-key / --secret-key / --account-id manually.`,
 			})
 			if err != nil {
 				return err
+			}
+
+			// Subsequent-run safety net: a previously-saved config may still
+			// have the loopback default if the prior run was tunnel-mode.
+			// Override in-memory only — we don't rewrite config.yml here.
+			if mode == ingress.ModeListen && !userOverrodeBind && cfg.HTTPListenAddr == config.DefaultHTTPListenAddr {
+				cfg.HTTPListenAddr = "0.0.0.0:8080"
 			}
 
 			authFiles, err := auth.BootstrapPrimary(dir, config.DirName)
@@ -128,33 +162,29 @@ flow and supply --access-key / --secret-key / --account-id manually.`,
 				return fmt.Errorf("sqld didn't start listening on %s within 15s: %w", cfg.HTTPListenAddr, err)
 			}
 
-			var qt *tunnel.QuickTunnel
-			if !noTunnel {
-				upstream := "http://" + cfg.HTTPListenAddr
-				if strings.HasPrefix(cfg.HTTPListenAddr, "0.0.0.0") {
-					upstream = "http://" + strings.Replace(cfg.HTTPListenAddr, "0.0.0.0", "127.0.0.1", 1)
-				}
-				qt, err = tunnel.RunQuick(ctx, upstream)
-				if err != nil {
-					stop()
-					<-sqldErr
-					return fmt.Errorf("open Cloudflare Tunnel: %w", err)
-				}
+			upstream := "http://" + cfg.HTTPListenAddr
+			if strings.HasPrefix(cfg.HTTPListenAddr, "0.0.0.0") {
+				upstream = "http://" + strings.Replace(cfg.HTTPListenAddr, "0.0.0.0", "127.0.0.1", 1)
+			}
+			ing, err := ingress.New(ctx, mode, ingress.Opts{
+				Upstream:  upstream,
+				PublicURL: publicURL,
+			})
+			if err != nil {
+				stop()
+				<-sqldErr
+				return fmt.Errorf("start ingress: %w", err)
 			}
 
 			tokenBytes, _ := os.ReadFile(authFiles.ReplicaToken)
-			printUpSuccess(absDBPath, cfg, qt, strings.TrimSpace(string(tokenBytes)))
+			printUpSuccess(absDBPath, cfg, ing, strings.TrimSpace(string(tokenBytes)))
 
 			select {
 			case err := <-sqldErr:
-				if qt != nil {
-					qt.Stop()
-				}
+				ing.Stop()
 				return err
 			case <-ctx.Done():
-				if qt != nil {
-					qt.Stop()
-				}
+				ing.Stop()
 				<-sqldErr
 				return nil
 			}
@@ -172,7 +202,10 @@ flow and supply --access-key / --secret-key / --account-id manually.`,
 	cmd.Flags().StringVar(&bucketPrefix, "bucket-prefix", config.DefaultBucketPrefix, "bottomless prefix within the bucket (lets multiple databases share one bucket)")
 	cmd.Flags().StringVar(&httpListenAddr, "http-listen-addr", config.DefaultHTTPListenAddr, "where sqld serves Hrana-over-HTTP locally")
 	cmd.Flags().StringVar(&grpcListenAddr, "grpc-listen-addr", config.DefaultGRPCListenAddr, "where sqld serves gRPC for replica nodes")
-	cmd.Flags().BoolVar(&noTunnel, "no-tunnel", false, "skip the Cloudflare Tunnel; expose only locally")
+	cmd.Flags().StringVar(&ingressMode, "ingress", envOrDefault("SQLITEDEPLOY_INGRESS", string(ingress.ModeTunnel)), "public-URL strategy: tunnel (Cloudflare quick tunnel, $0, anywhere) | listen (bind a port, your platform's ingress handles HTTPS — Fly/Render/Railway/Cloud Run/your VPS)")
+	cmd.Flags().StringVar(&publicURL, "public-url", envOrDefault("SQLITEDEPLOY_PUBLIC_URL", ""), "public HTTPS URL clients should use (listen mode only — e.g. https://db.example.com or your Fly/Render auto-domain)")
+	cmd.Flags().BoolVar(&noTunnel, "no-tunnel", false, "deprecated: use --ingress=listen instead")
+	_ = cmd.Flags().MarkHidden("no-tunnel")
 	cmd.Flags().BoolVar(&byoStorage, "byo-storage", false, "skip the managed R2 flow; supply credentials via --access-key/--secret-key/--account-id")
 	return cmd
 }
@@ -241,15 +274,22 @@ func waitForListener(ctx context.Context, addr string, timeout time.Duration) er
 	}
 }
 
-func printUpSuccess(absDBPath string, cfg *config.Config, qt *tunnel.QuickTunnel, replicaToken string) {
+func printUpSuccess(absDBPath string, cfg *config.Config, ing ingress.Ingress, replicaToken string) {
 	fmt.Println()
 	fmt.Println("✓ Your SQLite is live!")
 	fmt.Println()
-	if qt != nil {
-		fmt.Printf("  Public URL:  libsql://%s\n", strings.TrimPrefix(qt.PublicURL, "https://"))
-		fmt.Printf("               (HTTPS: %s)\n", qt.PublicURL)
+	if u := ing.PublicURL(); u != "" {
+		display := strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://")
+		fmt.Printf("  Public URL:  libsql://%s\n", display)
+		if strings.HasPrefix(u, "https://") {
+			fmt.Printf("               (HTTPS: %s)\n", u)
+		}
 	} else {
-		fmt.Printf("  Local URL:   http://%s   (--no-tunnel; bring your own proxy)\n", cfg.HTTPListenAddr)
+		// Listen mode without --public-url: point user at their platform's
+		// ingress without inventing a URL we don't know.
+		fmt.Printf("  Listening:   http://%s\n", cfg.HTTPListenAddr)
+		fmt.Println("               (point your platform's HTTPS ingress at this port —")
+		fmt.Println("                Fly auto-TLS, Render, Railway, Cloud Run, your reverse proxy, etc.)")
 	}
 	if replicaToken != "" {
 		fmt.Printf("  Auth token:  %s\n", replicaToken)

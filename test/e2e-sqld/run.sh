@@ -2,8 +2,8 @@
 # E2E smoke test for sqlitedeploy v2 (sqld + bottomless to MinIO).
 #
 # Validates:
-#   1. `sqlitedeploy up --byo-storage --no-tunnel` bootstraps + runs against
-#      an S3-compatible bucket without touching Cloudflare.
+#   1. `sqlitedeploy up --byo-storage --ingress=listen` bootstraps + runs
+#      against an S3-compatible bucket without touching Cloudflare.
 #   2. Writes via stock sqlite3 driver land in the local DB.
 #   3. Hrana HTTP endpoint serves the same data to remote clients.
 #   4. (TODO Phase 6.5) replica node streams from primary and sees the data.
@@ -53,11 +53,11 @@ echo "== 1. starting MinIO + bucket-init =="
 docker compose -f "$HERE/docker-compose.yml" up -d --wait
 trap 'cleanup' EXIT
 
-echo "== 2. sqlitedeploy up --byo-storage --no-tunnel (against MinIO, in background) =="
+echo "== 2. sqlitedeploy up --byo-storage --ingress=listen (against MinIO, in background) =="
 cd "$WORK"
 "$SQLITEDEPLOY" up \
   --byo-storage \
-  --no-tunnel \
+  --ingress=listen \
   --provider s3 \
   --bucket sqlitedeploy-e2e \
   --region us-east-1 \
