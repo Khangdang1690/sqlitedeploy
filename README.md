@@ -199,8 +199,6 @@ client = libsql_client.create_client_sync(
 client.execute("SELECT 1")
 ```
 
-See [`examples/cloudflare-workers-readonly/`](examples/cloudflare-workers-readonly/) for a working Worker.
-
 > **Inspecting locally.** sqld's database file lives at `.sqlitedeploy/db/dbs/default/data` (with `-wal`/`-shm` siblings). To poke at it with the `sqlite3` CLI, **first stop sqld**, then `sqlite3 .sqlitedeploy/db/dbs/default/data`.
 
 ### 6. Tear it down
