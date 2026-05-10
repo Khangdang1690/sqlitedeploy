@@ -6,7 +6,7 @@
 
     <groupId>io.github.khangdang1690</groupId>
     <artifactId>sqlitedeploy-parent</artifactId>
-    <version>0.5.1</version>
+    <version>0.6.0</version>
     <packaging>pom</packaging>
 
     <name>sqlitedeploy parent</name>

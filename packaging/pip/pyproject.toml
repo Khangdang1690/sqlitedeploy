@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sqlitedeploy"
-version = "0.5.1"
+version = "0.6.0"
 description = "Distributed SQLite with sqld + bottomless replication to your own S3-compatible bucket. Installs the platform-native sqlitedeploy CLI binary."
 readme = "README.md"
 license = { text = "Apache-2.0" }

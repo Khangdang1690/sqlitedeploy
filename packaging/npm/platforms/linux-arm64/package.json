@@ -1,6 +1,6 @@
 {
   "name": "@weirdvl/linux-arm64",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "sqlitedeploy CLI binary for linux-arm64. Installed automatically by the `sqlitedeploy` package.",
   "license": "Apache-2.0",
   "homepage": "https://github.com/Khangdang1690/sqlitedeploy",

@@ -1,6 +1,6 @@
 {
   "name": "sqlitedeploy",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Distributed SQLite with sqld + bottomless replication to your own S3-compatible bucket. Installs the platform-native sqlitedeploy CLI binary.",
   "license": "Apache-2.0",
   "homepage": "https://github.com/Khangdang1690/sqlitedeploy",
@@ -35,9 +35,9 @@
     "node": ">=16"
   },
   "optionalDependencies": {
-    "@weirdvl/linux-x64": "0.5.1",
-    "@weirdvl/linux-arm64": "0.5.1",
-    "@weirdvl/darwin-x64": "0.5.1",
-    "@weirdvl/darwin-arm64": "0.5.1"
+    "@weirdvl/linux-x64": "0.6.0",
+    "@weirdvl/linux-arm64": "0.6.0",
+    "@weirdvl/darwin-x64": "0.6.0",
+    "@weirdvl/darwin-arm64": "0.6.0"
   }
 }
