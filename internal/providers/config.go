@@ -17,15 +17,20 @@ func ToConfig(p Provider) Config {
 		// R2's endpoint is derived from AccountID; don't persist a redundant copy.
 		c.Endpoint = ""
 	}
+	if a, ok := p.(*Azure); ok {
+		c.AccountID = a.config.AccountID
+		// Azure's endpoint is derived from AccountID; don't persist a redundant copy.
+		c.Endpoint = ""
+	}
 	return c
 }
 
 // ParseKind validates that s names a supported provider.
 func ParseKind(s string) (Kind, error) {
 	switch Kind(s) {
-	case KindR2, KindB2, KindS3:
+	case KindR2, KindB2, KindS3, KindAzure:
 		return Kind(s), nil
 	default:
-		return "", fmt.Errorf("unsupported provider %q (supported: r2, b2, s3)", s)
+		return "", fmt.Errorf("unsupported provider %q (supported: r2, b2, s3, azure)", s)
 	}
 }

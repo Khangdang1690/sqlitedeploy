@@ -6,9 +6,10 @@ import "fmt"
 type Kind string
 
 const (
-	KindR2 Kind = "r2"
-	KindB2 Kind = "b2"
-	KindS3 Kind = "s3"
+	KindR2    Kind = "r2"
+	KindB2    Kind = "b2"
+	KindS3    Kind = "s3"
+	KindAzure Kind = "azure"
 )
 
 // Provider describes the minimum surface needed to point sqld's bottomless
@@ -54,6 +55,8 @@ func FromConfig(c Config) (Provider, error) {
 		return &B2{config: c}, nil
 	case KindS3:
 		return &S3{config: c}, nil
+	case KindAzure:
+		return &Azure{config: c}, nil
 	default:
 		return nil, fmt.Errorf("unknown provider kind %q", c.Kind)
 	}

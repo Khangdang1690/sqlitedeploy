@@ -275,10 +275,56 @@ func sanitizeForToken(s string) string {
 	return string(out)
 }
 
+// buildAzureManual handles the Azure provider path. Azure uses a different
+// credential shape (account name + account key) so it short-circuits the
+// generic access-key / secret-key prompts used by other providers.
+func buildAzureManual(in providerInputs) (providers.Provider, error) {
+	var err error
+
+	bucket := in.bucket
+	if bucket == "" {
+		bucket, err = promptString("Container name", "")
+		if err != nil {
+			return nil, err
+		}
+	}
+	if bucket == "" {
+		return nil, fmt.Errorf("container (bucket) is required")
+	}
+
+	accountName := in.accountID
+	if accountName == "" {
+		accountName, err = promptString("Azure storage account name", "")
+		if err != nil {
+			return nil, err
+		}
+	}
+	if accountName == "" {
+		return nil, fmt.Errorf("--account-id is required for Azure (your storage account name)")
+	}
+
+	accountKey := in.secretKey
+	if accountKey == "" {
+		accountKey, err = promptSecret("Azure storage account key")
+		if err != nil {
+			return nil, err
+		}
+	}
+	if accountKey == "" {
+		return nil, fmt.Errorf("--secret-key is required for Azure (your storage account key)")
+	}
+
+	return providers.NewAzure(accountName, bucket, accountKey), nil
+}
+
 // buildProviderManual is the explicit-flags path: prompts for any missing
 // values and constructs the right Provider. Used by B2, generic S3, and any
 // R2 flow that supplied at least one of access-key / secret-key / account-id.
 func buildProviderManual(kind providers.Kind, in providerInputs) (providers.Provider, error) {
+	if kind == providers.KindAzure {
+		return buildAzureManual(in)
+	}
+
 	bucket := in.bucket
 	var err error
 
